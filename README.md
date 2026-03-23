@@ -1,143 +1,3 @@
-<<<<<<< HEAD
-# Instalación de Dependencias
-
-Antes de usar este proyecto, asegúrate de tener instaladas las siguientes librerías de Python:
-
-<<<<<<< HEAD
-1. `tkinter`  
-2. `math`  
-3. `pandas`  
-4. `scipy`  
-=======
-1. `tkinter`
-2. `math`
-3. `pandas`
-4. `scipy`
-5. `numpy`
-6. `matplotlib`
-7. `openpyxl` (para importar archivos Excel)
->>>>>>> 7c28551 (Adding Version 2 to repo, starting modular architecture)
-
-Si no las tienes, puedes instalarlas fácilmente copiando y pegando el siguiente comando en tu terminal:
-
-```bash
-<<<<<<< HEAD
-pip install tkinter math pandas scipy
-
-```
-
-=======
-pip install pandas scipy numpy matplotlib openpyxl
-
-```
-
-**Nota:** `tkinter` y `math` generalmente vienen preinstalados con Python.
-
->>>>>>> 7c28551 (Adding Version 2 to repo, starting modular architecture)
-# Como correr el programa
-
-Para poder correr el programa utilizar el comando en consola:
-
-```bash
-python app.py
-<<<<<<< HEAD
-
-```
-
-Se utilizara este comando para ejecutar el programa hasta que se termine de integrar todas las funciones solicitadas.
-=======
-```
-
-# Funcionalidades del Programa
-
-Este programa de estadística descriptiva e inferencial incluye las siguientes funcionalidades:
-
-## 📊 Tablas de Frecuencias
-- Tabla de frecuencias agrupada (con intervalos)
-- Tabla de frecuencias no agrupada (datos individuales)
-- Importación de datos desde archivos Excel (.xlsx, .xls) y CSV
-
-## 📈 Análisis Descriptivo
-
-### Medidas de Tendencia Central
-- Media aritmética, geométrica y armónica
-- Mediana (interpolada y cruda)
-- Moda (cruda e interpolada)
-
-### Medidas de Posición
-- Cuartiles (Q1, Q2, Q3)
-- Deciles (D1-D9)
-- Percentiles (P1-P99)
-
-### Medidas de Dispersión
-- Varianza (poblacional y muestral)
-- Desviación estándar (poblacional y muestral)
-- Rango y rango intercuartílico
-- Coeficiente de variación
-
-### Medidas de Forma
-- Asimetría (coeficiente de sesgo)
-- Curtosis (apuntamiento)
-
-## 📊 Gráficos Estadísticos
-- Histogramas
-- Polígonos de frecuencia
-- Ojivas (ascendentes y descendentes)
-- Gráficos de barras
-- Gráficos circulares (pie charts)
-- Diagramas de caja (boxplots)
-- Diagramas de dispersión
-
-## 🎲 Probabilidades
-
-### Probabilidades Elementales
-- Sucesos simples
-- Sucesos excluyentes
-- Sucesos no excluyentes
-- Sucesos independientes
-- Sucesos dependientes
-
-### Teorema de Bayes
-- Cálculo de probabilidades condicionales
-
-### Diagramas de Árbol
-- Creación interactiva de diagramas de árbol
-- Cálculo automático de probabilidades acumuladas
-- Visualización de todas las ramas posibles
-
-### Distribuciones de Probabilidad
-- Distribución de Bernoulli
-- Distribución Binomial
-- Distribución de Poisson
-- Distribución Normal (con cálculo de Z-scores)
-
-## 📉 Correlación y Regresión
-
-### Análisis de Correlación
-- Correlación de Pearson (lineal)
-- Correlación de Spearman (rangos)
-- Coeficiente de determinación (r²)
-
-### Regresión Simple
-- Regresión lineal simple (Y = a + bX)
-- Regresión exponencial (Y = a * e^(bX))
-- Regresión logarítmica (Y = a + b*ln(X))
-- Visualización de datos y línea de regresión
-- Cálculo de errores (SSE, MSE, RMSE)
-
-### Regresión Múltiple
-- Regresión lineal múltiple (Y = β₀ + β₁X₁ + β₂X₂ + ... + βₙXₙ)
-- Coeficiente de determinación ajustado (R² ajustado)
-- Interpretación de coeficientes
-
-## 🎨 Características de la Interfaz
-- Interfaz gráfica intuitiva con tkinter
-- Organización por módulos temáticos
-- Gráficos interactivos embebidos con matplotlib
-- Resultados detallados con interpretaciones estadísticas
-- Exportación e importación de datos
->>>>>>> 7c28551 (Adding Version 2 to repo, starting modular architecture)
-=======
 # Estadística Descriptiva — v3
 
 Aplicación de escritorio para análisis estadístico descriptivo, construida con Python y CustomTkinter. Desarrollada como proyecto académico para los cursos de Estadística I y II de la Universidad Mariano Gálvez, y como ejercicio práctico de arquitectura de software.
@@ -158,6 +18,7 @@ Aplicación de escritorio para análisis estadístico descriptivo, construida co
 - Frecuencias absolutas, relativas, acumuladas y porcentuales
 
 ### Medidas estadísticas
+
 | Categoría | Medidas |
 |---|---|
 | Tendencia central | Media aritmética, mediana, moda (cruda e interpolada), media geométrica, media armónica |
@@ -207,7 +68,7 @@ Aplicación de escritorio para análisis estadístico descriptivo, construida co
 
 ---
 
-## Instalación y ejecución
+## Instalación
 
 ### 1. Clonar el repositorio
 
@@ -224,24 +85,17 @@ python -m venv venv
 # Linux / macOS
 source venv/bin/activate
 
-# Windows
+# Windows (CMD)
 venv\Scripts\activate
+
+# Windows (PowerShell)
+venv\Scripts\Activate.ps1
 ```
 
 ### 3. Instalar dependencias
 
 ```bash
 pip install -r requirements.txt
-
-# O instalando el proyecto en modo editable (recomendado para desarrollo)
-pip install -e ".[dev]"
-```
-
-### 4. Ejecutar la aplicación
-
-```bash
-cd "src/Estadistica Descriptiva"
-python main.py
 ```
 
 ---
@@ -253,7 +107,6 @@ python main.py
 ### Linux / macOS
 
 ```bash
-# Desde la raíz del proyecto
 source venv/bin/activate
 cd "src/Estadistica Descriptiva"
 python main.py
@@ -278,15 +131,13 @@ python main.py
 > **Nota:** la carpeta `src/Estadistica Descriptiva` contiene un espacio en el nombre.
 > Siempre enciérrala entre comillas al escribirla en la terminal.
 
-### Verificar que todo funciona antes de ejecutar
+### Verificar que el entorno está listo
 
 ```bash
-# Desde la raíz del proyecto (con el venv activo)
 python -c "import customtkinter, matplotlib, pandas, scipy; print('OK')"
 ```
 
-Si imprime `OK`, el entorno está listo. Si lanza un `ModuleNotFoundError`, ejecuta
-`pip install -r requirements.txt` nuevamente.
+Si imprime `OK`, el entorno está configurado correctamente. Si aparece un `ModuleNotFoundError`, ejecuta `pip install -r requirements.txt` nuevamente.
 
 ---
 
@@ -356,7 +207,7 @@ La navegación entre paneles usa `tkraise()` — todos los paneles se construyen
 # Desde la raíz del proyecto (con el venv activo)
 pytest
 
-# Con reporte de cobertura
+# Con salida detallada
 pytest -v
 ```
 
@@ -371,4 +222,3 @@ pytest -v
 | V1 | Script monolítico, sin separación de responsabilidades |
 | V2 | Múltiples archivos pero con lógica de negocio mezclada en la UI |
 | **V3** | **Arquitectura MVC modular, CustomTkinter, tests unitarios** |
->>>>>>> 87b4d89 (Adding Version 3 to repo)

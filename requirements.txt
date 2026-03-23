@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-=======
-
->>>>>>> 87b4d89 (Adding Version 3 to repo)
-# Requisitos para Estadística Descriptiva e Inferencial v2.0
+# Requisitos para Estadística Descriptiva e Inferencial v3.0
 
 # Análisis de datos
 pandas>=1.5.0
@@ -14,20 +10,14 @@ scipy>=1.9.0
 # Visualización
 matplotlib>=3.6.0
 
-<<<<<<< HEAD
-=======
 # UI moderna
 customtkinter>=5.2.0
 
->>>>>>> 87b4d89 (Adding Version 3 to repo)
 # Exportación Excel
 openpyxl>=3.0.0
 
 # Fechas
 python-dateutil>=2.8.0
-<<<<<<< HEAD
-=======
 
 # Testing
 pytest>=7.0.0
->>>>>>> 87b4d89 (Adding Version 3 to repo)
