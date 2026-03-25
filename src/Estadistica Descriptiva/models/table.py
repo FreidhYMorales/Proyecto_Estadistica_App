@@ -110,6 +110,10 @@ class Table:
         except Exception as e:
             raise RuntimeError(f"Error al importar archivo: {e}")
 
+    def to_dataframe(self) -> pd.DataFrame:
+        """Returns the current table as a pandas DataFrame."""
+        return pd.DataFrame(list(self.rows), columns=list(self.columns))
+
     def get_sheet_names(self, path: str) -> list:
         """Returns sheet names for an Excel file. Returns empty list for CSV."""
         if path.endswith(".csv"):

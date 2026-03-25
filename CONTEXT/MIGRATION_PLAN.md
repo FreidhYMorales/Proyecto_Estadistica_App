@@ -1,9 +1,9 @@
 # Plan de Migración V2 → V3
 
-## Estado: COMPLETADA ✅
+## Estado: COMPLETADA ✅ + Módulos inferenciales integrados
 
-Migración de scripts monolíticos V2 a arquitectura MVC modular con CustomTkinter.
-Lógica de negocio completamente separada de la interfaz gráfica.
+Migración de scripts monolíticos V2 a arquitectura MVC modular con CustomTkinter completada.
+Sobre esa base se integraron los módulos de muestreo e inferencia del directorio `AGREGAR/`.
 
 ---
 
@@ -66,6 +66,40 @@ Lógica de negocio completamente separada de la interfaz gráfica.
 - [x] **#4** Diagrama de árbol optimizado con `canvas.itemconfig()` en lugar de redibujado completo
 - [x] **#5** Selector de hoja para Excel con múltiples hojas (CTkToplevel + CTkRadioButton)
 - [x] **#6** Exportar resultados a `.txt` desde todos los paneles de resultados
+
+---
+
+### Fase 5 — Integración de módulos inferenciales (desde `AGREGAR/`) ✅
+
+Los archivos de la carpeta `AGREGAR/estadistica proyecto/estadistica/` contenían lógica
+estadística inferencial en formato consola. Se adaptaron e integraron en la arquitectura MVC.
+
+#### Fuentes del directorio `AGREGAR/`
+| Archivo origen | Clases/funciones | Destino en V3 | Cambios |
+|---|---|---|---|
+| `sampling_methods.py` | `MetodosMuestreo` (MAS, sistemático, estratificado) | `utils/sampling.py` | Sin cambios sustanciales (ya MVC-compatible) |
+| `confidence_intervals.py` | `IntervalosConfianza` | `utils/inference.py` | Sin cambios sustanciales |
+| `sample_size.py` | `CalculadorTamanioMuestra` | `utils/inference.py` | Sin cambios sustanciales |
+| `visualizer.py` | `Visualizador` (5 gráficos) | `utils/inference_graphs.py` | Refactorizado: `plt.show()` → `Figure` + retorna `(fig, ax)` |
+| `data_loader.py` | `CargadorDatos` | ❌ No integrado | Duplica `Table.load_from_file()` ya existente |
+| `main.py` (consola) | Menú principal | ❌ No integrado | Reemplazado por paneles GUI |
+| `12_muestreo_no_probabilistico.py` | Conveniencia, cuotas, bola de nieve, juicio | `utils/sampling.py` | Adaptado como clase `MuestreoNoProbabilistico` |
+
+#### Nuevos archivos creados
+| Archivo | Descripción |
+|---|---|
+| `utils/sampling.py` | `MetodosMuestreo`, `MuestreoNoProbabilistico`, `ErroresMuestreo` |
+| `utils/inference.py` | `IntervalosConfianza`, `CalculadorTamanioMuestra` |
+| `utils/inference_graphs.py` | 4 funciones de gráficos inferencial que retornan `(fig, ax)` |
+| `views/sampling_panel.py` | `SamplingPanel` — muestreo probabilístico + no probabilístico + errores |
+| `views/inference_panel.py` | `InferencePanel` — IC (proporción, media Z/t) + tamaño de muestra |
+
+#### Modificaciones en archivos existentes
+| Archivo | Cambio |
+|---|---|
+| `models/table.py` | Agregado `to_dataframe()` — expone los datos como `pd.DataFrame` para el muestreo estratificado y por cuotas |
+| `controllers/app_controller.py` | 13 nuevos métodos en 3 dominios: muestreo probabilístico (3), muestreo no probabilístico (4), inferencia/IC (4), errores (2) |
+| `views/main_window.py` | `ContentStack` + 2 paneles nuevos; Sidebar: sección "MUESTREO E INFERENCIA" con 2 botones; `_BTN_COLORS` y `_LABELS` ampliados |
 
 ---
 

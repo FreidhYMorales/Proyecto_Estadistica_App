@@ -144,8 +144,9 @@ CTk (ventana raíz)
 ├── Sidebar (CTkScrollableFrame, col=0, weight=0, minsize=240)
 │   ├── Sección VARIABLES: name_entry, type_combo, [Agregar][Editar][Importar]
 │   ├── Sección DATOS: data_entry, data_col_combo, index_combo, [Nueva fila][Guardar]
-│   └── Sección ANÁLISIS/ESTADÍSTICA/GRÁFICOS/PROBABILIDADES/REGRESIÓN: nav buttons
-│       └── set_active(key) → resalta el botón activo
+│   ├── Sección ANÁLISIS/ESTADÍSTICA/GRÁFICOS/PROBABILIDADES/REGRESIÓN: nav buttons
+│   ├── Sección MUESTREO E INFERENCIA: nav buttons (sampling, inference)
+│   └── set_active(key) → resalta el botón activo
 └── RightPane (CTkFrame, col=1, weight=1)
     ├── DataTable        (row=0, weight=2, minsize=180) — siempre visible
     ├── ContentToolbar   (row=1, fixed 32 px)           — breadcrumb + acciones
@@ -154,7 +155,9 @@ CTk (ventana raíz)
         ├── StatisticsPanel   (key="stats")
         ├── GraphsPanel       (key="graphs")
         ├── ProbabilityPanel  (key="prob")
-        └── RegressionPanel   (key="reg")
+        ├── RegressionPanel   (key="reg")
+        ├── SamplingPanel     (key="sampling")
+        └── InferencePanel    (key="inference")
 ```
 
 ### `ContentToolbar`
@@ -204,12 +207,23 @@ def _show_graphs_panel(self): self._show_panel("graphs")
 ```python
 # Botones con colores por dominio (estado inactivo):
 _BTN_COLORS = {
-    "stats":  ("#2a6494", "#1a4a70"),
-    "graphs": ("#2e6b3e", "#1b4a28"),
-    "prob":   ("#7a6b2e", "#4a3e18"),
-    "reg":    ("#6b2e2e", "#4a1b1b"),
+    "stats":     ("#2a6494", "#1a4a70"),   # azul estadística
+    "graphs":    ("#2e6b3e", "#1b4a28"),   # verde gráficos
+    "prob":      ("#7a6b2e", "#4a3e18"),   # dorado probabilidad
+    "reg":       ("#6b2e2e", "#4a1b1b"),   # rojo regresión
+    "sampling":  ("#2e5b7a", "#1a3a52"),   # azul oscuro muestreo
+    "inference": ("#5a3e7a", "#3a2552"),   # púrpura inferencia
 }
 _ACTIVE_COLOR = ("#1f6aa5", "#4d9de0")   # azul brillante para estado activo
+```
+
+Los `_LABELS` de `ContentToolbar` también incluyen las nuevas claves:
+```python
+_LABELS = {
+    ...,
+    "sampling":  "Muestreo Probabilístico",
+    "inference": "Inferencia Estadística",
+}
 ```
 
 ---
@@ -228,6 +242,45 @@ Panel._root (CTkFrame fg_color="transparent", row=0 col=0 en ContentStack)
 
 `_make_panel()` en cada panel limpia `_content` con `clear_frame()` y retorna
 el frame de control + widget de resultado.
+
+---
+
+## `views/sampling_panel.py` — `SamplingPanel`
+
+Panel registrado bajo la clave `"sampling"`. Toolbar con **tres grupos** separados por divisores visuales:
+
+| Grupo | Dropdown | Opciones |
+|---|---|---|
+| Probabilístico | Aleatorio Simple | Seleccionar muestra |
+| | Sistemático | Seleccionar muestra |
+| | Estratificado | Proporcional / Óptima (Neyman) |
+| No Probabilístico | No Probabilístico | Conveniencia, Juicio, Por Cuotas, Bola de Nieve |
+| Errores | Errores de Muestreo | Error para Media, Error para Proporción |
+
+**Sub-paneles de texto** (`_make_text_panel`): Conveniencia, Juicio, Bola de Nieve, Errores.
+**Sub-paneles con gráfico** (`_make_graph_panel`): Estratificado (barras N_h vs n_h), Por Cuotas (misma gráfica).
+
+Todos los métodos no probabilísticos incluyen `advertencia:` en la salida que explica las limitaciones de cada método (sesgo, no generalizable, etc.).
+
+El panel de Errores de Muestreo muestra además una **tabla clasificatoria de los 5 tipos de error** (aleatorio, sistemático, no respuesta, cobertura, medición) con descripción y si se reduce con `n`.
+
+---
+
+## `views/inference_panel.py` — `InferencePanel`
+
+Panel registrado bajo la clave `"inference"`. Toolbar con tres dropdowns:
+
+| Dropdown | Opciones |
+|---|---|
+| IC — Proporción | Calcular IC para Proporción (Wald o Wilson) |
+| IC — Media | σ conocida (Z) / σ desconocida datos (t) / σ desconocida manual (t) |
+| Tamaño de Muestra | Para proporción / Para media |
+
+Los paneles de IC para Media usan `_make_graph_panel` y renderizan la distribución muestral con la región de confianza sombreada (`utils/inference_graphs.build_normal_dist_ic`).
+
+Los paneles de IC para Proporción y Tamaño de Muestra usan `_make_text_panel`.
+
+Todos los resultados incluyen botón **Exportar** que guarda el texto a `.txt` vía `ResultTextWidget.export()`.
 
 ---
 

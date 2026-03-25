@@ -1,9 +1,12 @@
 from tkinter import filedialog
+from typing import Optional, List
 import customtkinter as ctk
 
 from models.table import Table
 from utils.trends import Trends
 from utils.statistics import CentralMeasures, DispersionMeasures
+from utils.sampling import MetodosMuestreo, MuestreoNoProbabilistico, ErroresMuestreo
+from utils.inference import IntervalosConfianza, CalculadorTamanioMuestra
 
 
 class AppController:
@@ -174,3 +177,188 @@ class AppController:
             **DispersionMeasures.calculate_dispersion(data),
             **DispersionMeasures.calculate_shape(data),
         }
+
+    def get_dataframe(self):
+        """Returns the full table as a pandas DataFrame."""
+        return self.table.to_dataframe()
+
+    # ── Sampling ─────────────────────────────────────────────────────────────
+
+    def sampling_simple(self, column_name: str, n: int, reemplazo: bool = False) -> dict:
+        """Aleatorio simple sobre los datos numéricos de una columna."""
+        data = self.table.get_numeric_column(column_name)
+        if not data:
+            raise ValueError(f"No hay datos numéricos en '{column_name}'.")
+        mm = MetodosMuestreo()
+        return mm.aleatorio_simple(data, n, reemplazo)
+
+    def sampling_systematic(self, column_name: str, n: int) -> dict:
+        """Muestreo sistemático sobre los datos numéricos de una columna."""
+        data = self.table.get_numeric_column(column_name)
+        if not data:
+            raise ValueError(f"No hay datos numéricos en '{column_name}'.")
+        mm = MetodosMuestreo()
+        return mm.sistematico(data, n)
+
+    def sampling_stratified(
+        self,
+        strata_col: str,
+        n_total: int,
+        tipo: str = "proporcional",
+        variable_col: Optional[str] = None,
+    ) -> dict:
+        """Muestreo estratificado sobre el DataFrame completo."""
+        df = self.table.to_dataframe()
+        if df.empty:
+            raise ValueError("No hay datos cargados.")
+        mm = MetodosMuestreo()
+        return mm.estratificado(df, strata_col, n_total, tipo, variable_col)
+
+    def sampling_conglomerados(self, cluster_col: str, k: int) -> dict:
+        """Muestreo por conglomerados: selecciona k grupos completos al azar."""
+        df = self.table.to_dataframe()
+        if df.empty:
+            raise ValueError("No hay datos cargados.")
+        mm = MetodosMuestreo()
+        return mm.conglomerados(df, cluster_col, k)
+
+    # ── Confidence Intervals ─────────────────────────────────────────────────
+
+    def ic_proporcion(
+        self, exitos: int, n: int, nivel_confianza: float = 0.95, metodo: str = "normal"
+    ) -> dict:
+        """IC para proporción poblacional."""
+        ic = IntervalosConfianza(nivel_confianza)
+        return ic.ic_proporcion(exitos, n, metodo)
+
+    def ic_media_z(
+        self, media: float, sigma: float, n: int, nivel_confianza: float = 0.95
+    ) -> dict:
+        """IC para media con σ conocida (distribución Z)."""
+        ic = IntervalosConfianza(nivel_confianza)
+        return ic.ic_media_sigma_conocida(media, sigma, n)
+
+    def ic_media_t_datos(self, datos: List[float], nivel_confianza: float = 0.95) -> dict:
+        """IC para media con σ desconocida, calculado desde datos muestrales."""
+        ic = IntervalosConfianza(nivel_confianza)
+        return ic.ic_media_sigma_desconocida(datos=datos)
+
+    def ic_varianza(
+        self,
+        nivel_confianza: float = 0.95,
+        datos: Optional[List[float]] = None,
+        desv_muestral: Optional[float] = None,
+        n: Optional[int] = None,
+    ) -> dict:
+        """IC para varianza poblacional (distribución chi-cuadrada)."""
+        ic = IntervalosConfianza(nivel_confianza)
+        return ic.ic_varianza(datos, desv_muestral, n)
+
+    def ic_media_t_manual(
+        self,
+        media: float,
+        desv: float,
+        n: int,
+        nivel_confianza: float = 0.95,
+    ) -> dict:
+        """IC para media con σ desconocida, valores ingresados manualmente."""
+        ic = IntervalosConfianza(nivel_confianza)
+        return ic.ic_media_sigma_desconocida(media_muestral=media, desv_muestral=desv, n=n)
+
+    # ── Sample Size ───────────────────────────────────────────────────────────
+
+    def sample_size_proportion(
+        self,
+        margen_error: float,
+        proporcion_esperada: float = 0.5,
+        nivel_confianza: float = 0.95,
+        poblacion: Optional[int] = None,
+        perdidas: Optional[float] = None,
+    ) -> dict:
+        """Tamaño de muestra para estimar una proporción."""
+        calc = CalculadorTamanioMuestra(nivel_confianza)
+        return calc.para_proporcion(margen_error, proporcion_esperada, poblacion, perdidas)
+
+    def sample_size_mean(
+        self,
+        margen_error: float,
+        desv_estandar: float,
+        nivel_confianza: float = 0.95,
+        poblacion: Optional[int] = None,
+        perdidas: Optional[float] = None,
+    ) -> dict:
+        """Tamaño de muestra para estimar una media."""
+        calc = CalculadorTamanioMuestra(nivel_confianza)
+        return calc.para_media(margen_error, desv_estandar, poblacion, perdidas)
+
+    # ── Non-probabilistic Sampling ────────────────────────────────────────────
+
+    def sampling_conveniencia(self, column_name: str, n: int, inicio: int = 0) -> dict:
+        """Muestreo por conveniencia: primeros n elementos desde 'inicio'."""
+        data = self.table.get_numeric_column(column_name)
+        if not data:
+            raise ValueError(f"No hay datos numéricos en '{column_name}'.")
+        return MuestreoNoProbabilistico.conveniencia(data, n, inicio)
+
+    def sampling_juicio(
+        self, column_name: str, indices: List[int], criterio: str = ""
+    ) -> dict:
+        """Muestreo por juicio: selección manual de índices por el investigador."""
+        data = self.table.get_numeric_column(column_name)
+        if not data:
+            raise ValueError(f"No hay datos numéricos en '{column_name}'.")
+        return MuestreoNoProbabilistico.juicio(data, indices, criterio)
+
+    def sampling_cuotas(
+        self,
+        strata_col: str,
+        cuotas: Optional[dict] = None,
+        n_total: Optional[int] = None,
+    ) -> dict:
+        """Muestreo por cuotas: primeros n_h elementos de cada estrato (no aleatorio)."""
+        df = self.table.to_dataframe()
+        if df.empty:
+            raise ValueError("No hay datos cargados.")
+        return MuestreoNoProbabilistico.por_cuotas(df, strata_col, cuotas, n_total)
+
+    def sampling_bola_de_nieve(
+        self,
+        column_name: str,
+        indices_semilla: List[int],
+        n_ondas: int,
+        refs_por_onda: int,
+    ) -> dict:
+        """Muestreo bola de nieve: expansión por referidos desde índices semilla."""
+        data = self.table.get_numeric_column(column_name)
+        if not data:
+            raise ValueError(f"No hay datos numéricos en '{column_name}'.")
+        mm = MuestreoNoProbabilistico()
+        return mm.bola_de_nieve(data, indices_semilla, n_ondas, refs_por_onda)
+
+    # ── Sampling Errors ───────────────────────────────────────────────────────
+
+    def errores_media(
+        self,
+        column_name: str,
+        nivel_confianza: float = 0.95,
+        N: Optional[int] = None,
+        mu: Optional[float] = None,
+    ) -> dict:
+        """Calcula errores de muestreo para la media de una columna."""
+        datos = self.table.get_numeric_column(column_name)
+        if len(datos) < 2:
+            raise ValueError("Se necesitan al menos 2 valores numéricos.")
+        em = ErroresMuestreo(nivel_confianza)
+        return em.para_media(datos=datos, N=N, mu=mu)
+
+    def errores_proporcion(
+        self,
+        exitos: int,
+        n: int,
+        nivel_confianza: float = 0.95,
+        N: Optional[int] = None,
+        p_real: Optional[float] = None,
+    ) -> dict:
+        """Calcula errores de muestreo para una proporción."""
+        em = ErroresMuestreo(nivel_confianza)
+        return em.para_proporcion(exitos, n, N, p_real)

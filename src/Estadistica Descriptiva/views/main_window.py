@@ -32,6 +32,8 @@ from views.statistics_panel import StatisticsPanel
 from views.graphs_panel import GraphsPanel
 from views.probability_panel import ProbabilityPanel
 from views.regression_panel import RegressionPanel
+from views.sampling_panel import SamplingPanel
+from views.inference_panel import InferencePanel
 
 
 # ── ContentToolbar ────────────────────────────────────────────────────────────
@@ -43,12 +45,14 @@ class ContentToolbar(ctk.CTkFrame):
     """
 
     _LABELS: dict[str, str] = {
-        "freq":    "Tablas de Frecuencia",
-        "central": "Medidas de Tendencia Central",
-        "stats":   "Dispersión y Forma",
-        "graphs":  "Gráficos Estadísticos",
-        "prob":    "Probabilidad",
-        "reg":     "Regresión",
+        "freq":      "Tablas de Frecuencia",
+        "central":   "Medidas de Tendencia Central",
+        "stats":     "Dispersión y Forma",
+        "graphs":    "Gráficos Estadísticos",
+        "prob":      "Probabilidad",
+        "reg":       "Regresión",
+        "sampling":  "Muestreo Probabilístico",
+        "inference": "Inferencia Estadística",
     }
 
     def __init__(self, parent, **kwargs):
@@ -156,10 +160,12 @@ class Sidebar(ctk.CTkScrollableFrame):
 
     # Default colors for each nav button (inactive state)
     _BTN_COLORS: dict[str, str | tuple] = {
-        "stats":  ("#2a6494", "#1a4a70"),
-        "graphs": ("#2e6b3e", "#1b4a28"),
-        "prob":   ("#7a6b2e", "#4a3e18"),
-        "reg":    ("#6b2e2e", "#4a1b1b"),
+        "stats":     ("#2a6494", "#1a4a70"),
+        "graphs":    ("#2e6b3e", "#1b4a28"),
+        "prob":      ("#7a6b2e", "#4a3e18"),
+        "reg":       ("#6b2e2e", "#4a1b1b"),
+        "sampling":  ("#2e5b7a", "#1a3a52"),
+        "inference": ("#5a3e7a", "#3a2552"),
     }
     _ACTIVE_COLOR = ("#1f6aa5", "#4d9de0")
 
@@ -307,6 +313,12 @@ class Sidebar(ctk.CTkScrollableFrame):
         self._nav_btn("  Análisis de Regresión", self._cb["regression_panel"],
                       key="reg", color=self._BTN_COLORS["reg"])
 
+        self._section("MUESTREO E INFERENCIA")
+        self._nav_btn("  Muestreo Probabilístico", self._cb["sampling_panel"],
+                      key="sampling", color=self._BTN_COLORS["sampling"])
+        self._nav_btn("  Inferencia Estadística", self._cb["inference_panel"],
+                      key="inference", color=self._BTN_COLORS["inference"])
+
 
 # ── DataTable ─────────────────────────────────────────────────────────────────
 
@@ -391,6 +403,8 @@ class MainWindow:
             "graphs_panel":      self._show_graphs_panel,
             "probability_panel": self._show_probability_panel,
             "regression_panel":  self._show_regression_panel,
+            "sampling_panel":    self._show_sampling_panel,
+            "inference_panel":   self._show_inference_panel,
         }
 
         # ── Right pane (intermediate container for the 3-row right layout) ──
@@ -403,17 +417,21 @@ class MainWindow:
         self._stack       = ContentStack(self._right_pane)
 
         # ── Pre-build all panels (built once, preserved across navigation) ──
-        self._freq_panel  = FrequencyPanel(self._stack)
-        self._stats_panel = StatisticsPanel(self._stack, self._ctrl)
-        self._graph_panel = GraphsPanel(self._stack, self._ctrl)
-        self._prob_panel  = ProbabilityPanel(self._stack, self._ctrl)
-        self._reg_panel   = RegressionPanel(self._stack, self._ctrl)
+        self._freq_panel      = FrequencyPanel(self._stack)
+        self._stats_panel     = StatisticsPanel(self._stack, self._ctrl)
+        self._graph_panel     = GraphsPanel(self._stack, self._ctrl)
+        self._prob_panel      = ProbabilityPanel(self._stack, self._ctrl)
+        self._reg_panel       = RegressionPanel(self._stack, self._ctrl)
+        self._sampling_panel  = SamplingPanel(self._stack, self._ctrl)
+        self._inference_panel = InferencePanel(self._stack, self._ctrl)
 
-        self._stack.register("freq",   self._freq_panel._root)
-        self._stack.register("stats",  self._stats_panel._root)
-        self._stack.register("graphs", self._graph_panel._root)
-        self._stack.register("prob",   self._prob_panel._root)
-        self._stack.register("reg",    self._reg_panel._root)
+        self._stack.register("freq",      self._freq_panel._root)
+        self._stack.register("stats",     self._stats_panel._root)
+        self._stack.register("graphs",    self._graph_panel._root)
+        self._stack.register("prob",      self._prob_panel._root)
+        self._stack.register("reg",       self._reg_panel._root)
+        self._stack.register("sampling",  self._sampling_panel._root)
+        self._stack.register("inference", self._inference_panel._root)
 
         # Default view on startup
         self._show_panel("stats")
@@ -614,6 +632,12 @@ class MainWindow:
 
     def _show_regression_panel(self) -> None:
         self._show_panel("reg")
+
+    def _show_sampling_panel(self) -> None:
+        self._show_panel("sampling")
+
+    def _show_inference_panel(self) -> None:
+        self._show_panel("inference")
 
     # ── Refresh ───────────────────────────────────────────────────────────────
 

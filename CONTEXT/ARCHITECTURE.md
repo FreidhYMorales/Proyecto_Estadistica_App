@@ -2,8 +2,7 @@
 
 ## Estado del proyecto
 
-**V3 completada.** Migración desde V2 (scripts monolíticos con tkinter puro) a arquitectura
-MVC modular con CustomTkinter. Toda la lógica de negocio está separada de la UI.
+**V3 activa con funcionalidad inferencial.** Migración desde V2 (scripts monolíticos con tkinter puro) a arquitectura MVC modular con CustomTkinter completada. Sobre esa base se integraron los módulos de muestreo e inferencia estadística del directorio `AGREGAR/`.
 
 ---
 
@@ -18,7 +17,8 @@ Proyecto_Estadistica_App_V3/
 │   ├── ARCHITECTURE.md                   ← Este archivo
 │   ├── MIGRATION_PLAN.md
 │   ├── BUGS_AND_ISSUES.md
-│   └── V2_INVENTORY.md
+│   ├── V2_INVENTORY.md
+│   └── UI_COMPONENTS.md
 ├── src/
 │   └── Estadistica Descriptiva/          ← Paquete principal
 │       ├── main.py                       ← Entry point
@@ -34,6 +34,8 @@ Proyecto_Estadistica_App_V3/
 │       │   ├── graphs_panel.py           ← Panel de gráficos matplotlib
 │       │   ├── probability_panel.py      ← Panel de probabilidad y distribuciones
 │       │   ├── regression_panel.py       ← Panel de correlación y regresión
+│       │   ├── sampling_panel.py         ← Panel de muestreo (probabilístico, no prob., errores)
+│       │   ├── inference_panel.py        ← Panel de IC y tamaño de muestra
 │       │   └── __init__.py
 │       ├── controllers/                  ← Capa de coordinación
 │       │   ├── app_controller.py         ← Controlador principal
@@ -44,6 +46,9 @@ Proyecto_Estadistica_App_V3/
 │           ├── graphs.py                 ← Generación de figuras matplotlib (fig, ax)
 │           ├── probability.py            ← Cálculos de probabilidad y distribuciones
 │           ├── regression.py             ← Correlación y regresión (lineal, exp, log, múltiple)
+│           ├── sampling.py               ← MetodosMuestreo, MuestreoNoProbabilistico, ErroresMuestreo
+│           ├── inference.py              ← IntervalosConfianza, CalculadorTamanioMuestra
+│           ├── inference_graphs.py       ← Gráficos de IC y muestreo estratificado (fig, ax)
 │           └── __init__.py
 ├── tests/
 │   ├── conftest.py                       ← sys.path setup para pytest
@@ -71,6 +76,17 @@ Proyecto_Estadistica_App_V3/
 - **Qué NO hace:** Crear widgets, abrir ventanas, gestionar estado de la aplicación.
 - **Dependencias externas:** `numpy`, `scipy`, `pandas`, `matplotlib` (solo `Figure`/`Axes`, nunca `plt.show()`).
 - **Regla:** Nunca importar `tkinter` ni `customtkinter`. Todas las funciones son testeables de forma unitaria.
+
+| Módulo | Clases / funciones principales |
+|---|---|
+| `trends.py` | `Trends` — tablas de frecuencia agrupadas/no agrupadas |
+| `statistics.py` | `CentralMeasures`, `DispersionMeasures` |
+| `graphs.py` | `build_histogram`, `build_bar_chart`, … (7 funciones, retornan `(fig, ax)`) |
+| `probability.py` | Probabilidad clásica, Bayes, Bernoulli, Binomial, Poisson, Normal |
+| `regression.py` | Pearson, Spearman, regresión lineal/exp/log/múltiple |
+| `sampling.py` | `MetodosMuestreo` (MAS, sistemático, estratificado), `MuestreoNoProbabilistico` (conveniencia, juicio, cuotas, bola de nieve), `ErroresMuestreo` (para media y proporción) |
+| `inference.py` | `IntervalosConfianza` (proporción, media Z, media t), `CalculadorTamanioMuestra` (proporción, media) |
+| `inference_graphs.py` | `build_ic_plot`, `build_normal_dist_ic`, `build_stratified_bars`, `build_compare_ic` (retornan `(fig, ax)`) |
 
 ### `views/` — Interfaz gráfica
 - **Qué hace:** Construir y mostrar la UI con CustomTkinter. Delegar eventos al controlador.
@@ -147,19 +163,23 @@ Usuario hace clic en "Tabla Agrupada"
 ```
 main.py
   └── controllers/app_controller.py
-        ├── models/table.py
+        ├── models/table.py              ← to_dataframe() expone DataFrame a sampling
         ├── utils/statistics.py
         ├── utils/trends.py
         ├── utils/graphs.py
         ├── utils/probability.py
         ├── utils/regression.py
+        ├── utils/sampling.py            ← MetodosMuestreo, MuestreoNoProbabilistico, ErroresMuestreo
+        ├── utils/inference.py           ← IntervalosConfianza, CalculadorTamanioMuestra
         └── views/main_window.py
               ├── views/theme.py
               ├── views/components.py
               ├── views/statistics_panel.py
               ├── views/graphs_panel.py
               ├── views/probability_panel.py
-              └── views/regression_panel.py
+              ├── views/regression_panel.py
+              ├── views/sampling_panel.py   ← usa utils/inference_graphs.py
+              └── views/inference_panel.py  ← usa utils/inference_graphs.py
 ```
 
 **Los `utils/` NUNCA importan tkinter ni customtkinter.**
