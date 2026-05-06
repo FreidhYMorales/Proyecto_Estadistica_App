@@ -97,6 +97,24 @@ El controlador es quien conoce los módulos de utils. Las vistas reciben el cont
 
 ---
 
+### BUG-006 — `views/inference_panel.py`: `PAD_XS` no importado → NameError silencioso ✅ RESUELTO
+**Severidad:** Alta — casos 1–4 del dropdown "IC — Dos Muestras" no mostraban nada al seleccionarse.
+
+`_two_sample_rows` usaba `PAD_XS` en cuatro llamadas `pack(pady=PAD_XS)`, pero el import
+de `views/theme.py` solo incluía `PAD_S, PAD_M, PAD_L`. El `NameError` lo capturaba
+silenciosamente el event loop de tkinter, así que el usuario solo veía que no pasaba nada.
+El caso "Muestras pareadas" no llamaba a `_two_sample_rows` y por eso sí funcionaba.
+
+```python
+# INCORRECTO
+from views.theme import FONT_SECTION, FONT_SMALL, PAD_S, PAD_M, PAD_L
+
+# CORRECTO
+from views.theme import FONT_SECTION, FONT_SMALL, PAD_XS, PAD_S, PAD_M, PAD_L
+```
+
+---
+
 ## Issues conocidos (pendientes)
 
 No hay bugs conocidos activos. Si se detecta alguno, documentarlo aquí con severidad y pasos para reproducir.

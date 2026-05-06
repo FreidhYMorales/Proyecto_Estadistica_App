@@ -45,6 +45,19 @@ Aplicación de escritorio para análisis estadístico descriptivo, construida co
 - Métricas de ajuste: R², R² ajustado, SSE, MSE, RMSE
 - Panel de predicción interactivo
 
+### Inferencia estadística
+
+| Tipo | Métodos disponibles |
+|---|---|
+| IC para Proporción | Wald (normal), Wilson — desde éxitos/n o desde p directo |
+| IC para Media | Z (σ conocida), t-Student (σ desconocida — datos o valores manuales) |
+| IC para Varianza | χ² desde datos cargados o valores manuales (s, n) |
+| IC — Diferencia de dos medias | Caso 1 (σ conocidas, Z), Caso 2 (varianzas iguales, t sp²), Caso 3 (Welch, t), Caso 4 (muestras grandes, Z), Muestras pareadas (t) |
+| Tamaño de muestra | Para proporción y para media — con N conocida y sin N |
+
+- Corrección por población finita aplicada automáticamente cuando se indica N
+- Resultados exportables a `.txt`
+
 ### Exportación
 - Resultados de estadísticas a archivos `.txt`
 - Gráficos exportables directamente desde la barra de matplotlib
@@ -162,11 +175,17 @@ Proyecto_Estadistica_App_V3/
 │       ├── views/
 │       │   ├── theme.py                  ← Tema, fuentes y constantes de UI
 │       │   ├── components.py             ← Widgets reutilizables (CTkDropdown, GraphCanvas…)
-│       │   ├── main_window.py            ← Ventana principal y navegación
-│       │   ├── statistics_panel.py       ← Panel de dispersión y forma
+│       │   ├── main_window.py            ← Ventana principal, CTkTabview y navegación
+│       │   ├── statistics_panel.py       ← Panel de estadística descriptiva
 │       │   ├── graphs_panel.py           ← Panel de gráficos
 │       │   ├── probability_panel.py      ← Panel de probabilidad
-│       │   └── regression_panel.py       ← Panel de regresión
+│       │   ├── regression_panel.py       ← Panel de regresión
+│       │   ├── inference_panel.py        ← Panel de inferencia estadística
+│       │   ├── sampling_panel.py         ← Panel de muestreo
+│       │   └── dialogs/                  ← Diálogos modales reutilizables
+│       │       ├── base_dialog.py
+│       │       ├── dataset_import_dialog.py
+│       │       └── graph_config_dialog.py
 │       ├── controllers/
 │       │   └── app_controller.py         ← Controlador principal
 │       └── utils/                        ← Lógica de negocio pura (sin UI)
@@ -174,8 +193,12 @@ Proyecto_Estadistica_App_V3/
 │           ├── statistics.py
 │           ├── graphs.py
 │           ├── probability.py
-│           └── regression.py
+│           ├── regression.py
+│           ├── inference.py              ← IC, tamaño de muestra, IC dos medias
+│           ├── inference_graphs.py       ← Gráficos para distribuciones de inferencia
+│           └── sampling.py              ← Lógica de muestreo
 └── tests/
+    ├── conftest.py
     ├── test_trends.py                    ← 14 tests
     ├── test_statistics.py                ← 13 tests
     ├── test_regression.py                ← 20 tests
@@ -197,7 +220,7 @@ utils/          →  funciones puras y testeables, sin UI
 
 **Regla fundamental:** `utils/` y `models/` nunca importan `tkinter` ni `customtkinter`.
 
-La navegación entre paneles usa `tkraise()` — todos los paneles se construyen una sola vez al iniciar y se alternan por z-order, preservando su estado entre navegaciones.
+La navegación entre paneles usa `CTkTabview` — los paneles se cargan de forma diferida (`importlib`) la primera vez que se activa cada pestaña. Un sidebar colapsable (240↔48 px) da acceso a la tabla de datos y controles de importación.
 
 ---
 
