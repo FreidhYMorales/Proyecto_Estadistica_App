@@ -178,7 +178,7 @@ class ProbabilityPanel:
             win = ctk.CTkToplevel()
             win.title("Seleccionar Evento A")
             win.resizable(False, False)
-            win.grab_set()
+            win.after(200, win.grab_set)
 
             sel_frame = ctk.CTkScrollableFrame(win, width=260, height=200)
             sel_frame.pack(padx=PAD_L, pady=PAD_M)
@@ -247,7 +247,7 @@ class ProbabilityPanel:
             win = ctk.CTkToplevel()
             win.title("Seleccionar Eventos A y B")
             win.geometry("400x420")
-            win.grab_set()
+            win.after(200, win.grab_set)
 
             content = ctk.CTkFrame(win, fg_color="transparent")
             content.pack(fill="both", expand=True, padx=PAD_L, pady=PAD_M)

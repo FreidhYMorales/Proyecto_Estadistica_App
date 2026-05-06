@@ -1,334 +1,71 @@
 """
-Main application window built with CustomTkinter.
+Main application window — restructured with CTkTabview navigation.
 
 Layout
 ------
-┌──────────────┬─────────────────────────────────────────────────┐
-│              │  DataTable          (row 0, weight=2, min=180)  │
-│   Sidebar    ├─────────────────────────────────────────────────┤
-│  (col 0,     │  ContentToolbar     (row 1, fixed 32 px)        │
-│   fixed w)   ├─────────────────────────────────────────────────┤
-│              │  ContentStack       (row 2, weight=3, min=380)  │
-│              │  [all panels stacked here, switched via raise]  │
-└──────────────┴─────────────────────────────────────────────────┘
+┌────────────────┬────────────────────────────────────────────────────┐
+│  ☰ Menú  (40px)│  [Estadística][Gráficos][Probabilidad]...          │
+│  ──────────────│  ──────────────────────────────────────────────── │
+│  Sidebar       │  Active panel  (lazy-loaded, weight=1)             │
+│  (collapsible  ├────────────────────────────────────────────────────┤
+│   240 ↔ 48 px) │  ▲ Tabla de datos  [+ Fila] [✕ Fila]   (toolbar) │
+│                │  DataTable Treeview (collapsible ~180 px)          │
+└────────────────┴────────────────────────────────────────────────────┘
 
-Navigation strategy
-────────────────────
-Panels are built ONCE at startup and placed in the same grid cell of ContentStack.
-Switching is done with tkraise() — no widgets are destroyed, state is preserved
-between navigation events (selected variables, generated graphs, drawn tree nodes).
+Navigation
+──────────
+• CTkTabview (top of right pane) replaces the old ContentStack + sidebar
+  nav buttons.
+• Panels are created LAZILY on the first activation of each tab and then
+  cached in self._panels — state is preserved across tab switches.
+• FrequencyPanel lives in the "Frecuencias" tab and is triggered by
+  sidebar buttons "Tabla Agrupada" / "Tabla No Agrupada".
+• "Medidas Centrales" still opens as a CTkToplevel popup (no change).
+
+Sidebar
+───────
+• Toggle button collapses/expands the sidebar (240 ↔ 48 px).
+• Contains only data-entry controls (variables, data cells, analysis
+  variable selector, frequency shortcuts). Navigation is on the tabview.
+
+DataTable
+─────────
+• Fixed at the bottom of the right pane.
+• Toggle button shows/hides the treeview body (~180 px).
+• Quick-action buttons in its toolbar row.
+
+Import
+──────
+• "Importar archivo" opens DatasetImportDialog (views/dialogs) which gives
+  the user a full preview before committing. Replaces the old inline dialog
+  in app_controller.
 """
 import tkinter as tk
 from tkinter import ttk, messagebox
+import importlib
 import customtkinter as ctk
 
 from views.theme import (
-    FONT_TITLE, FONT_SECTION, FONT_SMALL,
+    FONT_TITLE, FONT_SECTION, FONT_NORMAL, FONT_SMALL,
     PAD_XS, PAD_S, PAD_M, PAD_L,
     apply_treeview_dark_style,
 )
-from views.components import clear_frame, DataTreeview
-from views.statistics_panel import StatisticsPanel
-from views.graphs_panel import GraphsPanel
-from views.probability_panel import ProbabilityPanel
-from views.regression_panel import RegressionPanel
-from views.sampling_panel import SamplingPanel
-from views.inference_panel import InferencePanel
+from views.dialogs.dataset_import_dialog import DatasetImportDialog
 
-
-# ── ContentToolbar ────────────────────────────────────────────────────────────
-
-class ContentToolbar(ctk.CTkFrame):
-    """
-    Thin breadcrumb bar between the data table and the content stack.
-    Shows the active panel name and optional contextual action buttons.
-    """
-
-    _LABELS: dict[str, str] = {
-        "freq":      "Tablas de Frecuencia",
-        "central":   "Medidas de Tendencia Central",
-        "stats":     "Dispersión y Forma",
-        "graphs":    "Gráficos Estadísticos",
-        "prob":      "Probabilidad",
-        "reg":       "Regresión",
-        "sampling":  "Muestreo Probabilístico",
-        "inference": "Inferencia Estadística",
-    }
-
-    def __init__(self, parent, **kwargs):
-        super().__init__(parent, height=32, corner_radius=0,
-                         fg_color=("gray83", "gray20"), **kwargs)
-        self.grid_propagate(False)      # enforce fixed height
-        self.columnconfigure(1, weight=1)
-
-        self._dot = ctk.CTkLabel(
-            self, text="▶", font=FONT_SMALL,
-            text_color=("#1f6aa5", "#4d9de0"),
-        )
-        self._dot.grid(row=0, column=0, padx=(PAD_M, PAD_XS), sticky="w")
-
-        self._title = ctk.CTkLabel(
-            self, text="─", font=FONT_SMALL,
-            text_color=("gray35", "gray65"), anchor="w",
-        )
-        self._title.grid(row=0, column=1, padx=(0, PAD_M), sticky="w")
-
-        self._actions = ctk.CTkFrame(self, fg_color="transparent")
-        self._actions.grid(row=0, column=2, padx=PAD_S, sticky="e")
-
-    def set_panel(self, key: str, actions: list[tuple[str, callable]] | None = None) -> None:
-        """Update the breadcrumb label and rebuild action buttons."""
-        self._title.configure(text=self._LABELS.get(key, key))
-        for w in self._actions.winfo_children():
-            w.destroy()
-        for label, cmd in (actions or []):
-            ctk.CTkButton(
-                self._actions, text=label, height=24, font=FONT_SMALL, width=76,
-                fg_color=("gray72", "gray32"),
-                hover_color=("gray60", "gray42"),
-                command=cmd,
-            ).pack(side="left", padx=PAD_XS)
-
-
-# ── ContentStack ──────────────────────────────────────────────────────────────
-
-class ContentStack(ctk.CTkFrame):
-    """
-    Stacks all content panels in one grid cell (row=0, col=0).
-    Switching is done with tkraise() — panels are built once and preserve state.
-
-    minsize on row/col provides a floor so matplotlib figures never collapse:
-        _MIN_H=380 × _MIN_W=580 guarantees readable charts on 13" laptops.
-    """
-
-    _MIN_H: int = 380
-    _MIN_W: int = 580
-
-    def __init__(self, parent, **kwargs):
-        super().__init__(parent, corner_radius=0,
-                         fg_color=("gray95", "gray13"), **kwargs)
-        self.rowconfigure(0, weight=1, minsize=self._MIN_H)
-        self.columnconfigure(0, weight=1, minsize=self._MIN_W)
-        self._panels: dict[str, ctk.CTkFrame] = {}
-
-    def register(self, key: str, frame: ctk.CTkFrame) -> None:
-        """Place a panel frame in the stack. All panels share (row=0, col=0)."""
-        frame.grid(row=0, column=0, sticky="nsew")
-        self._panels[key] = frame
-
-    def show(self, key: str) -> None:
-        """Raise the panel with this key to the top of the z-stack."""
-        if key in self._panels:
-            self._panels[key].tkraise()
-
-
-# ── FrequencyPanel ────────────────────────────────────────────────────────────
-
-class FrequencyPanel:
-    """
-    Displays a frequency DataFrame (grouped or ungrouped) in a DataTreeview.
-    Registered in ContentStack under the key 'freq'.
-    Updated in-place via load() without recreating widgets.
-    """
-
-    def __init__(self, parent):
-        self._root = ctk.CTkFrame(parent, fg_color="transparent")
-        self._root.rowconfigure(1, weight=1)
-        self._root.columnconfigure(0, weight=1)
-
-        self._header = ctk.CTkLabel(
-            self._root, text="─", font=FONT_SECTION, anchor="w",
-        )
-        self._header.grid(row=0, column=0, sticky="w", padx=PAD_L, pady=(PAD_M, PAD_XS))
-
-        inner = ctk.CTkFrame(self._root, fg_color="transparent")
-        inner.grid(row=1, column=0, sticky="nsew")
-        self._tree = DataTreeview(inner)
-
-    def load(self, title: str, df) -> None:
-        self._header.configure(text=title)
-        self._tree.load(df)
-
-
-# ── Sidebar ───────────────────────────────────────────────────────────────────
-
-class Sidebar(ctk.CTkScrollableFrame):
-    """
-    Left navigation panel: data-entry controls + analysis navigation.
-    Active panel is highlighted via set_active(key).
-    """
-
-    # Default colors for each nav button (inactive state)
-    _BTN_COLORS: dict[str, str | tuple] = {
-        "stats":     ("#2a6494", "#1a4a70"),
-        "graphs":    ("#2e6b3e", "#1b4a28"),
-        "prob":      ("#7a6b2e", "#4a3e18"),
-        "reg":       ("#6b2e2e", "#4a1b1b"),
-        "sampling":  ("#2e5b7a", "#1a3a52"),
-        "inference": ("#5a3e7a", "#3a2552"),
-    }
-    _ACTIVE_COLOR = ("#1f6aa5", "#4d9de0")
-
-    def __init__(self, parent, callbacks: dict, controller, **kwargs):
-        super().__init__(parent, width=240, label_text="", corner_radius=0,
-                         fg_color=("gray92", "gray14"), **kwargs)
-        self._cb = callbacks
-        self._ctrl = controller
-        self._nav_buttons: dict[str, ctk.CTkButton] = {}
-        self._build()
-
-    # ── Helpers ───────────────────────────────────────────────────────────────
-
-    def _section(self, text: str) -> None:
-        ctk.CTkLabel(self, text=text, font=FONT_SMALL, anchor="w",
-                     text_color=("gray30", "gray70")).pack(
-            fill="x", padx=PAD_M, pady=(PAD_L, PAD_XS))
-        ctk.CTkFrame(self, height=1, fg_color=("gray70", "gray40")).pack(
-            fill="x", padx=PAD_M, pady=(0, PAD_S))
-
-    def _nav_btn(self, text: str, command,
-                 key: str = "", color: str | tuple = "transparent") -> ctk.CTkButton:
-        btn = ctk.CTkButton(
-            self, text=text, font=FONT_SMALL, height=34,
-            anchor="w", fg_color=color,
-            hover_color=("gray80", "gray28"),
-            command=command,
-        )
-        btn.pack(fill="x", padx=PAD_M, pady=PAD_XS)
-        if key:
-            self._nav_buttons[key] = btn
-        return btn
-
-    def set_active(self, key: str) -> None:
-        """Highlight the active navigation button and restore others to default."""
-        for k, btn in self._nav_buttons.items():
-            btn.configure(
-                fg_color=self._ACTIVE_COLOR if k == key
-                else self._BTN_COLORS.get(k, "transparent")
-            )
-
-    # ── Build ─────────────────────────────────────────────────────────────────
-
-    def _build(self) -> None:
-        ctk.CTkLabel(self, text="Estadística\nDescriptiva",
-                     font=FONT_TITLE, justify="left").pack(
-            padx=PAD_M, pady=(PAD_L, PAD_S), anchor="w")
-
-        # Variables
-        self._section("VARIABLES")
-        ctk.CTkLabel(self, text="Nombre:", font=FONT_SMALL, anchor="w").pack(
-            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
-        self.name_entry = ctk.CTkEntry(self, placeholder_text="Nombre de variable",
-                                       font=FONT_SMALL, height=30)
-        self.name_entry.pack(fill="x", padx=PAD_M, pady=PAD_XS)
-
-        ctk.CTkLabel(self, text="Tipo:", font=FONT_SMALL, anchor="w").pack(
-            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
-        self.type_combo = ctk.CTkComboBox(
-            self, values=["Numero", "Cadena"],
-            state="readonly", font=FONT_SMALL, height=30,
-        )
-        self.type_combo.set("Numero")
-        self.type_combo.pack(fill="x", padx=PAD_M, pady=PAD_XS)
-
-        r1 = ctk.CTkFrame(self, fg_color="transparent")
-        r1.pack(fill="x", padx=PAD_M, pady=PAD_XS)
-        r1.columnconfigure((0, 1), weight=1)
-        ctk.CTkButton(r1, text="Agregar", font=FONT_SMALL, height=28,
-                      command=self._cb["add_column"]).grid(
-            row=0, column=0, sticky="ew", padx=(0, PAD_XS))
-        ctk.CTkButton(r1, text="Editar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"),
-                      hover_color=("gray60", "gray45"),
-                      command=self._cb["edit_column"]).grid(
-            row=0, column=1, sticky="ew", padx=(PAD_XS, 0))
-        ctk.CTkButton(self, text="Importar archivo", font=FONT_SMALL, height=28,
-                      fg_color=("#3a7ebf", "#1f6aa5"),
-                      command=self._cb["import_file"]).pack(
-            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
-
-        # Datos
-        self._section("DATOS")
-        ctk.CTkLabel(self, text="Dato:", font=FONT_SMALL, anchor="w").pack(
-            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
-        self.data_entry = ctk.CTkEntry(self, placeholder_text="Valor",
-                                       font=FONT_SMALL, height=30)
-        self.data_entry.pack(fill="x", padx=PAD_M, pady=PAD_XS)
-
-        ctk.CTkLabel(self, text="Variable:", font=FONT_SMALL, anchor="w").pack(
-            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
-        self.data_col_combo = ctk.CTkComboBox(
-            self, values=list(self._ctrl.columns),
-            state="readonly", font=FONT_SMALL, height=30,
-        )
-        self.data_col_combo.pack(fill="x", padx=PAD_M, pady=PAD_XS)
-
-        ctk.CTkLabel(self, text="Índice de fila:", font=FONT_SMALL, anchor="w").pack(
-            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
-        self.index_combo = ctk.CTkComboBox(
-            self, values=["1"], state="readonly", font=FONT_SMALL, height=30,
-        )
-        self.index_combo.set("1")
-        self.index_combo.pack(fill="x", padx=PAD_M, pady=PAD_XS)
-
-        r2 = ctk.CTkFrame(self, fg_color="transparent")
-        r2.pack(fill="x", padx=PAD_M, pady=PAD_XS)
-        r2.columnconfigure((0, 1), weight=1)
-        ctk.CTkButton(r2, text="Nueva fila", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"),
-                      hover_color=("gray60", "gray45"),
-                      command=self._cb["add_row"]).grid(
-            row=0, column=0, sticky="ew", padx=(0, PAD_XS))
-        ctk.CTkButton(r2, text="Guardar", font=FONT_SMALL, height=28,
-                      command=self._cb["edit_cell"]).grid(
-            row=0, column=1, sticky="ew", padx=(PAD_XS, 0))
-
-        # Análisis
-        self._section("ANÁLISIS")
-        ctk.CTkLabel(self, text="Variable activa:", font=FONT_SMALL, anchor="w").pack(
-            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
-        self.col_selector = ctk.CTkComboBox(
-            self, values=list(self._ctrl.columns),
-            state="readonly", font=FONT_SMALL, height=30,
-        )
-        self.col_selector.pack(fill="x", padx=PAD_M, pady=(PAD_XS, PAD_S))
-
-        self._nav_btn("  Tabla Agrupada",    self._cb["grouped_table"],   key="freq")
-        self._nav_btn("  Tabla No Agrupada", self._cb["ungrouped_table"])
-
-        self._section("ESTADÍSTICA")
-        self._nav_btn("  Medidas Centrales",  self._cb["central_measures"])
-        self._nav_btn("  Dispersión y Forma", self._cb["statistics_panel"],
-                      key="stats", color=self._BTN_COLORS["stats"])
-
-        self._section("GRÁFICOS")
-        self._nav_btn("  Gráficos Estadísticos", self._cb["graphs_panel"],
-                      key="graphs", color=self._BTN_COLORS["graphs"])
-
-        self._section("PROBABILIDADES")
-        self._nav_btn("  Cálculo de Probabilidades", self._cb["probability_panel"],
-                      key="prob", color=self._BTN_COLORS["prob"])
-
-        self._section("REGRESIÓN")
-        self._nav_btn("  Análisis de Regresión", self._cb["regression_panel"],
-                      key="reg", color=self._BTN_COLORS["reg"])
-
-        self._section("MUESTREO E INFERENCIA")
-        self._nav_btn("  Muestreo Probabilístico", self._cb["sampling_panel"],
-                      key="sampling", color=self._BTN_COLORS["sampling"])
-        self._nav_btn("  Inferencia Estadística", self._cb["inference_panel"],
-                      key="inference", color=self._BTN_COLORS["inference"])
+# ── Layout constants ──────────────────────────────────────────────────────────
+_SB_EXPANDED  = 240   # sidebar width when open
+_SB_COLLAPSED = 48    # sidebar width when closed (toggle button only)
+_DT_HEIGHT    = 180   # DataTable body height when visible
 
 
 # ── DataTable ─────────────────────────────────────────────────────────────────
 
 class DataTable(ctk.CTkFrame):
-    """Dark-styled ttk.Treeview wrapped in a CTkFrame for the main data grid."""
+    """Dark-styled ttk.Treeview for the main data grid."""
 
     def __init__(self, parent, **kwargs):
         super().__init__(parent, **kwargs)
         apply_treeview_dark_style()
-
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
 
@@ -364,120 +101,454 @@ class DataTable(ctk.CTkFrame):
             self._tree.insert("", "end", text=str(idx), values=row)
 
 
+# ── FrequencyPanel ────────────────────────────────────────────────────────────
+
+class FrequencyPanel:
+    """
+    Shows a frequency DataFrame in a DataTreeview.
+    Lives inside the 'Frecuencias' tab; loaded lazily like the other panels.
+    """
+
+    def __init__(self, parent):
+        from views.components import DataTreeview
+
+        self._root = ctk.CTkFrame(parent, fg_color="transparent")
+        self._root.grid(row=0, column=0, sticky="nsew")
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
+        self._root.rowconfigure(1, weight=1)
+        self._root.columnconfigure(0, weight=1)
+
+        self._header = ctk.CTkLabel(
+            self._root,
+            text="Selecciona una variable y tipo de tabla en el panel izquierdo →",
+            font=FONT_SECTION, anchor="w",
+            text_color=("gray40", "gray60"),
+        )
+        self._header.grid(row=0, column=0, sticky="w",
+                          padx=PAD_L, pady=(PAD_M, PAD_XS))
+
+        inner = ctk.CTkFrame(self._root, fg_color="transparent")
+        inner.grid(row=1, column=0, sticky="nsew")
+        inner.rowconfigure(0, weight=1)
+        inner.columnconfigure(0, weight=1)
+        self._tree = DataTreeview(inner)
+
+    def load(self, title: str, df) -> None:
+        self._header.configure(text=title)
+        self._tree.load(df)
+
+
+# ── Sidebar ───────────────────────────────────────────────────────────────────
+
+class Sidebar(ctk.CTkScrollableFrame):
+    """
+    Left data-entry panel.
+    Navigation is handled by CTkTabview — this sidebar contains only:
+      • Variable management (add, rename, import)
+      • Data cell editing
+      • Analysis variable selector + frequency/central-measures shortcuts
+    """
+
+    def __init__(self, parent, callbacks: dict, controller, **kwargs):
+        super().__init__(
+            parent,
+            width=_SB_EXPANDED - 10,
+            label_text="",
+            corner_radius=0,
+            fg_color=("gray92", "gray14"),
+            **kwargs,
+        )
+        self._cb   = callbacks
+        self._ctrl = controller
+        self._build()
+
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    def _section(self, text: str) -> None:
+        ctk.CTkLabel(
+            self, text=text, font=FONT_SMALL, anchor="w",
+            text_color=("gray30", "gray70"),
+        ).pack(fill="x", padx=PAD_M, pady=(PAD_L, PAD_XS))
+        ctk.CTkFrame(self, height=1,
+                     fg_color=("gray70", "gray40")).pack(
+            fill="x", padx=PAD_M, pady=(0, PAD_S))
+
+    def _action_btn(self, text: str, cmd, **kw) -> ctk.CTkButton:
+        btn = ctk.CTkButton(
+            self, text=text, font=FONT_SMALL,
+            height=32, anchor="w",
+            fg_color=("gray70", "gray30"),
+            hover_color=("gray60", "gray40"),
+            command=cmd, **kw,
+        )
+        btn.pack(fill="x", padx=PAD_M, pady=PAD_XS)
+        return btn
+
+    # ── Build ─────────────────────────────────────────────────────────────────
+
+    def _build(self) -> None:
+        ctk.CTkLabel(
+            self, text="Estadística\nDescriptiva",
+            font=FONT_TITLE, justify="left",
+        ).pack(padx=PAD_M, pady=(PAD_L, PAD_S), anchor="w")
+
+        # ── Variables ─────────────────────────────────────────────────────────
+        self._section("VARIABLES")
+        ctk.CTkLabel(self, text="Nombre:", font=FONT_SMALL, anchor="w").pack(
+            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
+        self.name_entry = ctk.CTkEntry(
+            self, placeholder_text="Nombre de variable",
+            font=FONT_SMALL, height=30,
+        )
+        self.name_entry.pack(fill="x", padx=PAD_M, pady=PAD_XS)
+
+        ctk.CTkLabel(self, text="Tipo:", font=FONT_SMALL, anchor="w").pack(
+            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
+        self.type_combo = ctk.CTkComboBox(
+            self, values=["Numero", "Cadena"],
+            state="readonly", font=FONT_SMALL, height=30,
+        )
+        self.type_combo.set("Numero")
+        self.type_combo.pack(fill="x", padx=PAD_M, pady=PAD_XS)
+
+        r1 = ctk.CTkFrame(self, fg_color="transparent")
+        r1.pack(fill="x", padx=PAD_M, pady=PAD_XS)
+        r1.columnconfigure((0, 1), weight=1)
+        ctk.CTkButton(r1, text="Agregar", font=FONT_SMALL, height=28,
+                      command=self._cb["add_column"]).grid(
+            row=0, column=0, sticky="ew", padx=(0, PAD_XS))
+        ctk.CTkButton(r1, text="Editar", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"),
+                      hover_color=("gray60", "gray45"),
+                      command=self._cb["edit_column"]).grid(
+            row=0, column=1, sticky="ew", padx=(PAD_XS, 0))
+
+        ctk.CTkButton(
+            self, text="⬆  Importar CSV / Excel",
+            font=FONT_SMALL, height=30,
+            fg_color=("#3a7ebf", "#1f6aa5"),
+            hover_color=("#2d6296", "#17528a"),
+            command=self._cb["import_file"],
+        ).pack(fill="x", padx=PAD_M, pady=(PAD_XS, 0))
+
+        # ── Datos ─────────────────────────────────────────────────────────────
+        self._section("DATOS")
+        ctk.CTkLabel(self, text="Dato:", font=FONT_SMALL, anchor="w").pack(
+            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
+        self.data_entry = ctk.CTkEntry(
+            self, placeholder_text="Valor",
+            font=FONT_SMALL, height=30,
+        )
+        self.data_entry.pack(fill="x", padx=PAD_M, pady=PAD_XS)
+
+        ctk.CTkLabel(self, text="Variable:", font=FONT_SMALL, anchor="w").pack(
+            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
+        self.data_col_combo = ctk.CTkComboBox(
+            self, values=list(self._ctrl.columns),
+            state="readonly", font=FONT_SMALL, height=30,
+        )
+        self.data_col_combo.pack(fill="x", padx=PAD_M, pady=PAD_XS)
+
+        ctk.CTkLabel(self, text="Índice de fila:", font=FONT_SMALL, anchor="w").pack(
+            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
+        self.index_combo = ctk.CTkComboBox(
+            self, values=["1"], state="readonly",
+            font=FONT_SMALL, height=30,
+        )
+        self.index_combo.set("1")
+        self.index_combo.pack(fill="x", padx=PAD_M, pady=PAD_XS)
+
+        r2 = ctk.CTkFrame(self, fg_color="transparent")
+        r2.pack(fill="x", padx=PAD_M, pady=PAD_XS)
+        r2.columnconfigure((0, 1), weight=1)
+        ctk.CTkButton(r2, text="Nueva fila", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"),
+                      hover_color=("gray60", "gray45"),
+                      command=self._cb["add_row"]).grid(
+            row=0, column=0, sticky="ew", padx=(0, PAD_XS))
+        ctk.CTkButton(r2, text="Guardar", font=FONT_SMALL, height=28,
+                      command=self._cb["edit_cell"]).grid(
+            row=0, column=1, sticky="ew", padx=(PAD_XS, 0))
+
+        # ── Análisis ──────────────────────────────────────────────────────────
+        self._section("ANÁLISIS")
+        ctk.CTkLabel(self, text="Variable activa:", font=FONT_SMALL, anchor="w").pack(
+            fill="x", padx=PAD_M, pady=(PAD_XS, 0))
+        self.col_selector = ctk.CTkComboBox(
+            self, values=list(self._ctrl.columns),
+            state="readonly", font=FONT_SMALL, height=30,
+        )
+        self.col_selector.pack(fill="x", padx=PAD_M, pady=(PAD_XS, PAD_S))
+
+        self._action_btn("  Tabla Agrupada",    self._cb["grouped_table"])
+        self._action_btn("  Tabla No Agrupada", self._cb["ungrouped_table"])
+        self._action_btn("  Medidas Centrales", self._cb["central_measures"])
+
+
 # ── MainWindow ────────────────────────────────────────────────────────────────
 
 class MainWindow:
     """
     Root application window.
 
-    All content panels are built ONCE in _build() and registered in ContentStack.
-    Navigation uses tkraise() — no widget destruction, state is preserved.
+    All content panels are loaded LAZILY on first tab visit and cached in
+    self._panels.  Navigation is through CTkTabview — no tkraise() calls.
     """
 
+    # (tab label, module path for importlib, class name)
+    # module_path=None → FrequencyPanel (special case, no controller arg)
+    _TABS: list[tuple] = [
+        ("Frecuencias",  None,                      None),
+        ("Estadística",  "views.statistics_panel",  "StatisticsPanel"),
+        ("Gráficos",     "views.graphs_panel",      "GraphsPanel"),
+        ("Probabilidad", "views.probability_panel", "ProbabilityPanel"),
+        ("Regresión",    "views.regression_panel",  "RegressionPanel"),
+        ("Muestreo",     "views.sampling_panel",    "SamplingPanel"),
+        ("Inferencia",   "views.inference_panel",   "InferencePanel"),
+    ]
+
     def __init__(self, title: str, controller):
-        self._ctrl = controller
-        self._active_panel: str = ""
+        self._ctrl              = controller
+        self._sidebar_expanded  = True
+        self._dt_visible        = True
+        self._panels: dict      = {}   # tab_name -> panel instance
+        self._freq_panel: FrequencyPanel | None = None
 
         self._window = ctk.CTk()
         self._window.title(title)
-        # Minimum: ensures matplotlib never renders below ~580×380
-        self._window.minsize(1060, 700)
+        self._window.minsize(960, 680)
 
         self._build()
         self._layout()
         self._refresh()
 
-    # ── Build ─────────────────────────────────────────────────────────────────
+    # ── Build ──────────────────────────────────────────────────────────────────
 
     def _build(self) -> None:
         callbacks = {
-            "add_column":        self._add_column,
-            "edit_column":       self._edit_column_dialog,
-            "import_file":       self._import_file,
-            "add_row":           self._add_row,
-            "edit_cell":         self._edit_cell,
-            "grouped_table":     self._show_grouped_table,
-            "ungrouped_table":   self._show_ungrouped_table,
-            "central_measures":  self._show_central_measures,
-            "statistics_panel":  self._show_statistics_panel,
-            "graphs_panel":      self._show_graphs_panel,
-            "probability_panel": self._show_probability_panel,
-            "regression_panel":  self._show_regression_panel,
-            "sampling_panel":    self._show_sampling_panel,
-            "inference_panel":   self._show_inference_panel,
+            "add_column":       self._add_column,
+            "edit_column":      self._edit_column_dialog,
+            "import_file":      self._import_file,
+            "add_row":          self._add_row,
+            "edit_cell":        self._edit_cell,
+            "grouped_table":    self._show_grouped_table,
+            "ungrouped_table":  self._show_ungrouped_table,
+            "central_measures": self._show_central_measures,
         }
 
-        # ── Right pane (intermediate container for the 3-row right layout) ──
-        self._right_pane = ctk.CTkFrame(self._window, corner_radius=0,
-                                        fg_color="transparent")
+        self._build_sidebar_wrapper(callbacks)
+        self._build_right_pane()
 
-        self._sidebar     = Sidebar(self._window, callbacks, self._ctrl)
-        self._data_table  = DataTable(self._right_pane, corner_radius=0)
-        self._ctoolbar    = ContentToolbar(self._right_pane)
-        self._stack       = ContentStack(self._right_pane)
+    # ── Sidebar wrapper ────────────────────────────────────────────────────────
 
-        # ── Pre-build all panels (built once, preserved across navigation) ──
-        self._freq_panel      = FrequencyPanel(self._stack)
-        self._stats_panel     = StatisticsPanel(self._stack, self._ctrl)
-        self._graph_panel     = GraphsPanel(self._stack, self._ctrl)
-        self._prob_panel      = ProbabilityPanel(self._stack, self._ctrl)
-        self._reg_panel       = RegressionPanel(self._stack, self._ctrl)
-        self._sampling_panel  = SamplingPanel(self._stack, self._ctrl)
-        self._inference_panel = InferencePanel(self._stack, self._ctrl)
+    def _build_sidebar_wrapper(self, callbacks: dict) -> None:
+        """
+        col 0 of the root window.
+        ┌─────────────────────────────┐
+        │ row 0: toggle button (40px) │  ← always visible
+        │ row 1: Sidebar scrollable   │  ← hidden on collapse
+        └─────────────────────────────┘
+        """
+        self._sb_wrapper = ctk.CTkFrame(
+            self._window, corner_radius=0,
+            fg_color=("gray88", "gray16"),
+        )
+        self._sb_wrapper.rowconfigure(1, weight=1)
+        self._sb_wrapper.columnconfigure(0, weight=1)
 
-        self._stack.register("freq",      self._freq_panel._root)
-        self._stack.register("stats",     self._stats_panel._root)
-        self._stack.register("graphs",    self._graph_panel._root)
-        self._stack.register("prob",      self._prob_panel._root)
-        self._stack.register("reg",       self._reg_panel._root)
-        self._stack.register("sampling",  self._sampling_panel._root)
-        self._stack.register("inference", self._inference_panel._root)
+        # Toggle strip
+        toggle_strip = ctk.CTkFrame(
+            self._sb_wrapper, height=40, width=_SB_COLLAPSED, corner_radius=0,
+            fg_color=("gray82", "gray20"),
+        )
+        toggle_strip.grid(row=0, column=0, sticky="ew")
+        toggle_strip.columnconfigure(0, weight=1)
+        toggle_strip.grid_propagate(False)
 
-        # Default view on startup
-        self._show_panel("stats")
+        self._toggle_btn = ctk.CTkButton(
+            toggle_strip, text="☰  Menú",
+            font=FONT_SMALL, height=36,
+            fg_color="transparent",
+            hover_color=("gray72", "gray30"),
+            anchor="w",
+            command=self._toggle_sidebar,
+        )
+        self._toggle_btn.grid(row=0, column=0, sticky="ew", padx=PAD_S)
+
+        # Scrollable content
+        self._sidebar = Sidebar(self._sb_wrapper, callbacks, self._ctrl)
+        self._sidebar.grid(row=1, column=0, sticky="nsew")
+
+    # ── Right pane ─────────────────────────────────────────────────────────────
+
+    def _build_right_pane(self) -> None:
+        """
+        col 1 of the root window.
+        ┌────────────────────────────────────┐
+        │ row 0: CTkTabview (weight=1)        │
+        ├────────────────────────────────────┤
+        │ row 1: DataTable container (fixed)  │
+        └────────────────────────────────────┘
+        """
+        self._right_pane = ctk.CTkFrame(
+            self._window, corner_radius=0, fg_color="transparent",
+        )
+        self._right_pane.columnconfigure(0, weight=1)
+        self._right_pane.rowconfigure(0, weight=1)
+        self._right_pane.rowconfigure(1, weight=0)
+
+        self._build_tabview()
+        self._build_datatable()
+
+    def _build_tabview(self) -> None:
+        self._tabview = ctk.CTkTabview(
+            self._right_pane,
+            corner_radius=6,
+            anchor="nw",
+        )
+        self._tabview.grid(row=0, column=0, sticky="nsew", padx=(1, 0))
+
+        for tab_name, _, _ in self._TABS:
+            self._tabview.add(tab_name)
+            tab = self._tabview.tab(tab_name)
+            tab.rowconfigure(0, weight=1)
+            tab.columnconfigure(0, weight=1)
+            # Placeholder label shown before the panel is loaded
+            ph = ctk.CTkLabel(
+                tab,
+                text=f"Cargando {tab_name}…",
+                font=FONT_NORMAL,
+                text_color=("gray50", "gray60"),
+            )
+            ph.grid(row=0, column=0)
+            tab._ph = ph  # noqa: SLF001
+
+        # Wire tab-change callback and pre-load the default tab
+        self._tabview.configure(command=self._on_tab_change)
+        self._tabview.set("Estadística")
+        self._load_tab("Estadística")
+
+    def _build_datatable(self) -> None:
+        """Collapsible DataTable fixed at the bottom of the right pane."""
+        self._dt_container = ctk.CTkFrame(
+            self._right_pane, fg_color="transparent",
+        )
+        self._dt_container.grid(row=1, column=0, sticky="ew", padx=(1, 0))
+        self._dt_container.columnconfigure(0, weight=1)
+        self._dt_container.rowconfigure(1, weight=0)
+
+        # Toolbar row
+        dt_toolbar = ctk.CTkFrame(
+            self._dt_container, height=32, corner_radius=0,
+            fg_color=("gray83", "gray20"),
+        )
+        dt_toolbar.grid(row=0, column=0, sticky="ew")
+        dt_toolbar.columnconfigure(1, weight=1)
+        dt_toolbar.grid_propagate(False)
+
+        self._dt_toggle_btn = ctk.CTkButton(
+            dt_toolbar, text="▲  Tabla de datos",
+            font=FONT_SMALL, height=28,
+            fg_color="transparent",
+            hover_color=("gray73", "gray30"),
+            anchor="w",
+            command=self._toggle_datatable,
+        )
+        self._dt_toggle_btn.grid(row=0, column=0, sticky="w",
+                                  padx=PAD_M, pady=PAD_XS)
+
+        for col_i, (lbl, cmd) in enumerate([
+            ("+ Fila",  self._add_row),
+            ("✕ Fila",  self._del_row_by_index),
+        ], start=2):
+            ctk.CTkButton(
+                dt_toolbar, text=lbl, width=64, height=24,
+                font=FONT_SMALL,
+                fg_color=("gray72", "gray32"),
+                hover_color=("gray60", "gray42"),
+                command=cmd,
+            ).grid(row=0, column=col_i, padx=PAD_XS, pady=PAD_XS)
+
+        # Body (hidden on collapse)
+        self._dt_body = ctk.CTkFrame(
+            self._dt_container, height=_DT_HEIGHT,
+            fg_color="transparent", corner_radius=0,
+        )
+        self._dt_body.grid(row=1, column=0, sticky="ew")
+        self._dt_body.grid_propagate(False)
+        self._dt_body.rowconfigure(0, weight=1)
+        self._dt_body.columnconfigure(0, weight=1)
+
+        self._data_table = DataTable(self._dt_body, corner_radius=0)
+        self._data_table.grid(row=0, column=0, sticky="nsew")
 
     # ── Layout ────────────────────────────────────────────────────────────────
 
     def _layout(self) -> None:
-        """
-        Window grid
-        ───────────
-        col 0: Sidebar  (fixed width 240, weight=0)
-        col 1: RightPane (weight=1)
-
-        RightPane grid
-        ──────────────
-        row 0: DataTable     (weight=2, minsize=180) — always visible
-        row 1: ContentToolbar (fixed 32 px, weight=0)
-        row 2: ContentStack  (weight=3, minsize=380) — panel switcher
-        """
-        self._window.columnconfigure(0, weight=0, minsize=240)
+        self._window.columnconfigure(0, weight=0, minsize=_SB_EXPANDED)
         self._window.columnconfigure(1, weight=1)
         self._window.rowconfigure(0, weight=1)
 
-        self._sidebar.grid(row=0, column=0, sticky="nsew")
+        self._sb_wrapper.grid(row=0, column=0, sticky="nsew")
         self._right_pane.grid(row=0, column=1, sticky="nsew")
 
-        self._right_pane.columnconfigure(0, weight=1)
-        self._right_pane.rowconfigure(0, weight=2, minsize=180)
-        self._right_pane.rowconfigure(1, weight=0)
-        self._right_pane.rowconfigure(2, weight=3, minsize=380)
+    # ── Lazy panel loading ────────────────────────────────────────────────────
 
-        self._data_table.grid(row=0, column=0, sticky="nsew", padx=(1, 0))
-        self._ctoolbar.grid(row=1, column=0, sticky="ew",   padx=(1, 0))
-        self._stack.grid(   row=2, column=0, sticky="nsew", padx=(1, 0), pady=(1, 0))
+    def _on_tab_change(self) -> None:
+        self._load_tab(self._tabview.get())
 
-    # ── Navigation helpers ────────────────────────────────────────────────────
+    def _load_tab(self, name: str) -> None:
+        """Create a panel the first time its tab is visited; cache it."""
+        if name in self._panels:
+            return
 
-    def _show_panel(self, key: str,
-                    actions: list[tuple[str, callable]] | None = None) -> None:
-        """Raise a panel, update breadcrumb, and highlight the sidebar button."""
-        self._stack.show(key)
-        self._ctoolbar.set_panel(key, actions)
-        self._sidebar.set_active(key)
-        self._active_panel = key
+        tab_def = next((t for t in self._TABS if t[0] == name), None)
+        if tab_def is None:
+            return
 
-    # ── Sidebar actions ───────────────────────────────────────────────────────
+        _, module_path, class_name = tab_def
+        tab = self._tabview.tab(name)
+
+        # Destroy placeholder
+        if hasattr(tab, "_ph") and tab._ph.winfo_exists():  # noqa: SLF001
+            tab._ph.destroy()  # noqa: SLF001
+
+        if name == "Frecuencias":
+            panel = FrequencyPanel(tab)
+            self._freq_panel = panel
+        else:
+            mod = importlib.import_module(module_path)
+            PanelClass = getattr(mod, class_name)
+            panel = PanelClass(tab, self._ctrl)
+
+        self._panels[name] = panel
+
+    # ── Sidebar toggle ────────────────────────────────────────────────────────
+
+    def _toggle_sidebar(self) -> None:
+        self._sidebar_expanded = not self._sidebar_expanded
+        if self._sidebar_expanded:
+            self._sidebar.grid()
+            self._window.columnconfigure(0, weight=0, minsize=_SB_EXPANDED)
+            self._toggle_btn.configure(text="☰  Menú")
+        else:
+            self._sidebar.grid_remove()
+            self._window.columnconfigure(0, weight=0, minsize=_SB_COLLAPSED)
+            self._toggle_btn.configure(text="☰")
+
+    # ── DataTable toggle ──────────────────────────────────────────────────────
+
+    def _toggle_datatable(self) -> None:
+        self._dt_visible = not self._dt_visible
+        if self._dt_visible:
+            self._dt_body.grid()
+            self._dt_toggle_btn.configure(text="▲  Tabla de datos")
+        else:
+            self._dt_body.grid_remove()
+            self._dt_toggle_btn.configure(text="▼  Tabla de datos")
+
+    # ── Variable actions ──────────────────────────────────────────────────────
 
     def _add_column(self) -> None:
         name = self._sidebar.name_entry.get().strip()
@@ -489,35 +560,12 @@ class MainWindow:
         except ValueError as e:
             messagebox.showerror("Error", str(e))
 
-    def _add_row(self) -> None:
-        self._ctrl.add_empty_row()
-        self._refresh()
-
-    def _edit_cell(self) -> None:
-        idx_str = self._sidebar.index_combo.get().strip()
-        column  = self._sidebar.data_col_combo.get().strip()
-        value   = self._sidebar.data_entry.get().strip()
-        if not value:
-            return
-        try:
-            self._ctrl.edit_cell(int(idx_str) - 1, column, value)
-            self._refresh()
-        except (ValueError, IndexError) as e:
-            messagebox.showerror("Error", str(e))
-
-    def _import_file(self) -> None:
-        try:
-            if self._ctrl.import_file():
-                self._refresh()
-        except Exception as e:
-            messagebox.showerror("Error", str(e))
-
     def _edit_column_dialog(self) -> None:
         win = ctk.CTkToplevel(self._window)
         win.title("Editar nombre de variable")
         win.geometry("340x180")
         win.resizable(False, False)
-        win.grab_set()
+        win.after(200, win.grab_set)
 
         content = ctk.CTkFrame(win, fg_color="transparent")
         content.pack(fill="both", expand=True, padx=PAD_L, pady=PAD_L)
@@ -536,7 +584,7 @@ class MainWindow:
         name_entry = ctk.CTkEntry(content, font=FONT_SMALL)
         name_entry.grid(row=1, column=1, sticky="ew", pady=PAD_S)
 
-        def apply():
+        def apply() -> None:
             old = col_combo.get().strip()
             new = name_entry.get().strip()
             if not old or not new:
@@ -552,6 +600,49 @@ class MainWindow:
                       command=apply).grid(
             row=2, column=0, columnspan=2, sticky="ew", pady=(PAD_M, 0))
 
+    # ── Data actions ──────────────────────────────────────────────────────────
+
+    def _add_row(self) -> None:
+        self._ctrl.add_empty_row()
+        self._refresh()
+
+    def _del_row_by_index(self) -> None:
+        idx_str = self._sidebar.index_combo.get().strip()
+        if not idx_str:
+            return
+        try:
+            self._ctrl.delete_row(int(idx_str) - 1)
+            self._refresh()
+        except (ValueError, IndexError) as e:
+            messagebox.showerror("Error", str(e))
+
+    def _edit_cell(self) -> None:
+        idx_str = self._sidebar.index_combo.get().strip()
+        column  = self._sidebar.data_col_combo.get().strip()
+        value   = self._sidebar.data_entry.get().strip()
+        if not value:
+            return
+        try:
+            self._ctrl.edit_cell(int(idx_str) - 1, column, value)
+            self._refresh()
+        except (ValueError, IndexError) as e:
+            messagebox.showerror("Error", str(e))
+
+    def _import_file(self) -> None:
+        """
+        Opens DatasetImportDialog for a full browse → preview → confirm flow.
+        Falls back to the controller's built-in dialog if the dialog is
+        unavailable for any reason.
+        """
+        try:
+            dlg = DatasetImportDialog(self._window)
+            result = dlg.get_result()
+            if result:
+                self._ctrl.load_file_direct(result["filepath"], result["sheet"])
+                self._refresh()
+        except Exception as e:
+            messagebox.showerror("Error al importar", str(e))
+
     # ── Frequency tables ──────────────────────────────────────────────────────
 
     def _show_grouped_table(self) -> None:
@@ -560,8 +651,9 @@ class MainWindow:
             return
         try:
             df = self._ctrl.get_grouped_table(col)
+            self._ensure_freq_tab()
             self._freq_panel.load(f"Tabla Agrupada — {col}", df)
-            self._show_panel("freq")
+            self._tabview.set("Frecuencias")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -571,10 +663,16 @@ class MainWindow:
             return
         try:
             df = self._ctrl.get_ungrouped_table(col)
+            self._ensure_freq_tab()
             self._freq_panel.load(f"Tabla No Agrupada — {col}", df)
-            self._show_panel("freq")
+            self._tabview.set("Frecuencias")
         except Exception as e:
             messagebox.showerror("Error", str(e))
+
+    def _ensure_freq_tab(self) -> None:
+        """Guarantees FrequencyPanel exists before use."""
+        if "Frecuencias" not in self._panels:
+            self._load_tab("Frecuencias")
 
     # ── Central measures ──────────────────────────────────────────────────────
 
@@ -591,8 +689,9 @@ class MainWindow:
         win = ctk.CTkToplevel(self._window)
         win.title("Medidas de Tendencia Central")
         win.geometry("600x620")
+        win.after(200, win.grab_set)
 
-        textbox = ctk.CTkTextbox(win, font=("Arial", 11), wrap="word")
+        textbox = ctk.CTkTextbox(win, font=("Courier New", 11), wrap="word")
         textbox.pack(fill="both", expand=True, padx=PAD_L, pady=PAD_L)
 
         lines = [
@@ -619,30 +718,10 @@ class MainWindow:
         textbox.insert("end", "\n".join(lines))
         textbox.configure(state="disabled")
 
-    # ── Module panels ─────────────────────────────────────────────────────────
-
-    def _show_statistics_panel(self) -> None:
-        self._show_panel("stats")
-
-    def _show_graphs_panel(self) -> None:
-        self._show_panel("graphs")
-
-    def _show_probability_panel(self) -> None:
-        self._show_panel("prob")
-
-    def _show_regression_panel(self) -> None:
-        self._show_panel("reg")
-
-    def _show_sampling_panel(self) -> None:
-        self._show_panel("sampling")
-
-    def _show_inference_panel(self) -> None:
-        self._show_panel("inference")
-
     # ── Refresh ───────────────────────────────────────────────────────────────
 
     def _refresh(self) -> None:
-        """Syncs all sidebar combos and data table after any data change."""
+        """Syncs sidebar combos and DataTable after any data change."""
         cols    = self._ctrl.columns
         rows    = self._ctrl.get_all_rows()
         indexes = tuple(str(i + 1) for i in range(len(rows)))

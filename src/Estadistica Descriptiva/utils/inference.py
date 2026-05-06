@@ -32,6 +32,52 @@ class IntervalosConfianza:
 
     # ── IC Proporción ─────────────────────────────────────────────────────────
 
+    def ic_proporcion_directa(self, p: float, n: int, metodo: str = "normal") -> dict:
+        """
+        IC para proporción ingresando p directamente (no éxitos/n).
+        metodo: 'normal' (Wald) o 'wilson'.
+        Fórmula Wald: p ± Z * sqrt(p·q/n)
+        """
+        if not (0 < p < 1):
+            raise ValueError("p debe estar entre 0 y 1 (exclusivos).")
+        if n <= 0:
+            raise ValueError("n debe ser positivo.")
+
+        q = 1 - p
+        condicion_normal = (n * p >= 5) and (n * q >= 5)
+        error_estandar = math.sqrt(p * q / n)
+
+        if metodo == "wilson":
+            Z = self.z
+            centro = (p + Z**2 / (2 * n)) / (1 + Z**2 / n)
+            margen = (Z * math.sqrt(p * q / n + Z**2 / (4 * n**2))) / (1 + Z**2 / n)
+            li = max(0.0, centro - margen)
+            ls = min(1.0, centro + margen)
+            margen_error = margen
+        else:
+            margen_error = self.z * error_estandar
+            li = max(0.0, p - margen_error)
+            ls = min(1.0, p + margen_error)
+
+        return {
+            "tipo": "proporción (p directo)",
+            "nivel_confianza": f"{self.nivel_confianza * 100:.0f}%",
+            "metodo": metodo,
+            "z": round(self.z, 4),
+            "n": n,
+            "p": round(p, 6),
+            "q": round(q, 6),
+            "p_por_q": round(p * q, 6),
+            "p_por_q_div_n": round(p * q / n, 8),
+            "error_estandar": round(error_estandar, 6),
+            "margen_error": round(margen_error, 6),
+            "limite_inferior": round(li, 6),
+            "limite_superior": round(ls, 6),
+            "condicion_normal_valida": condicion_normal,
+            "advertencia": None if condicion_normal else
+                "⚠ n·p o n·q < 5: la aproximación normal puede no ser precisa. Usa Wilson.",
+        }
+
     def ic_proporcion(self, exitos: int, n: int, metodo: str = "normal") -> dict:
         """
         IC para proporción. metodo: 'normal' (Wald) o 'wilson'.
@@ -354,3 +400,204 @@ class CalculadorTamanioMuestra:
             })
 
         return resultado
+
+
+class ICDosMedias:
+    """
+    Intervalos de confianza para la diferencia de dos medias poblacionales (μ₁ − μ₂).
+
+    Casos soportados:
+      1. σ₁, σ₂ conocidas                    → Z
+      2. σ desconocidas, varianzas iguales    → t (varianza ponderada sp²)
+      3. σ desconocidas, varianzas distintas  → t Welch
+      4. n₁, n₂ ≥ 30, σ desconocidas         → Z (TLC)
+      Pareadas. Muestras dependientes         → t sobre d̄
+    """
+
+    def __init__(self, nivel_confianza: float = 0.95):
+        if not (0 < nivel_confianza < 1):
+            raise ValueError("El nivel de confianza debe estar entre 0 y 1.")
+        self.nivel_confianza = nivel_confianza
+        self.alpha = 1 - nivel_confianza
+
+    def _z(self) -> float:
+        return stats.norm.ppf(1 - self.alpha / 2)
+
+    def _t(self, gl: int) -> float:
+        return stats.t.ppf(1 - self.alpha / 2, df=gl)
+
+    def _interpreta(self, li: float, ls: float) -> str:
+        nc_pct = f"{self.nivel_confianza * 100:.0f}%"
+        if li > 0:
+            return f"Con {nc_pct} de confianza: μ₁ > μ₂ — Muestra A significativamente MAYOR que B."
+        if ls < 0:
+            return f"Con {nc_pct} de confianza: μ₁ < μ₂ — Muestra A significativamente MENOR que B."
+        return f"Con {nc_pct} de confianza: NO hay diferencia significativa (el IC contiene el 0)."
+
+    def _base(self, caso: str, dist: str) -> dict:
+        return {
+            "caso": caso,
+            "nivel_confianza": f"{self.nivel_confianza * 100:.0f}%",
+            "distribucion": dist,
+        }
+
+    # ── Caso 1: Z, σ conocidas ────────────────────────────────────────────────
+
+    def caso1_sigma_conocida(
+        self, n1: int, x1: float, sigma1: float,
+        n2: int, x2: float, sigma2: float,
+    ) -> dict:
+        """IC para μ₁−μ₂ con σ₁, σ₂ poblacionales conocidas. Usa Z."""
+        for val, name in [(n1, "n₁"), (n2, "n₂"), (sigma1, "σ₁"), (sigma2, "σ₂")]:
+            if val <= 0:
+                raise ValueError(f"{name} debe ser positivo.")
+
+        Z = self._z()
+        diff = x1 - x2
+        se = math.sqrt(sigma1**2 / n1 + sigma2**2 / n2)
+        e = Z * se
+        li, ls = diff - e, diff + e
+
+        return {
+            **self._base("Caso 1: Z — σ₁, σ₂ conocidas", "Z (normal estándar)"),
+            "z": round(Z, 4),
+            "n1": n1, "x1": x1, "sigma1": sigma1,
+            "n2": n2, "x2": x2, "sigma2": sigma2,
+            "diferencia_medias": round(diff, 6),
+            "error_estandar": round(se, 6),
+            "margen_error": round(e, 6),
+            "limite_inferior": round(li, 6),
+            "limite_superior": round(ls, 6),
+            "interpretacion": self._interpreta(li, ls),
+        }
+
+    # ── Caso 2: t, varianzas iguales (sp²) ───────────────────────────────────
+
+    def caso2_varianzas_iguales(
+        self, n1: int, x1: float, s1: float,
+        n2: int, x2: float, s2: float,
+    ) -> dict:
+        """IC para μ₁−μ₂ con σ desconocidas, homocedásticas. Usa t (sp²)."""
+        for val, name in [(n1, "n₁"), (n2, "n₂")]:
+            if val < 2:
+                raise ValueError(f"{name} debe ser ≥ 2.")
+        for val, name in [(s1, "s₁"), (s2, "s₂")]:
+            if val < 0:
+                raise ValueError(f"{name} no puede ser negativo.")
+
+        gl = n1 + n2 - 2
+        sp2 = ((n1 - 1) * s1**2 + (n2 - 1) * s2**2) / gl
+        t = self._t(gl)
+        se = math.sqrt(sp2 * (1 / n1 + 1 / n2))
+        diff = x1 - x2
+        e = t * se
+        li, ls = diff - e, diff + e
+
+        return {
+            **self._base("Caso 2: t — varianzas iguales (sp²)", f"t-Student (gl = {gl})"),
+            "t_critico": round(t, 4),
+            "grados_libertad": gl,
+            "n1": n1, "x1": x1, "s1": s1,
+            "n2": n2, "x2": x2, "s2": s2,
+            "varianza_ponderada_sp2": round(sp2, 6),
+            "diferencia_medias": round(diff, 6),
+            "error_estandar": round(se, 6),
+            "margen_error": round(e, 6),
+            "limite_inferior": round(li, 6),
+            "limite_superior": round(ls, 6),
+            "interpretacion": self._interpreta(li, ls),
+        }
+
+    # ── Caso 3: t Welch, varianzas distintas ─────────────────────────────────
+
+    def caso3_welch(
+        self, n1: int, x1: float, s1: float,
+        n2: int, x2: float, s2: float,
+    ) -> dict:
+        """IC para μ₁−μ₂ con σ desconocidas, heterocedásticas. Usa t Welch."""
+        for val, name in [(n1, "n₁"), (n2, "n₂")]:
+            if val < 2:
+                raise ValueError(f"{name} debe ser ≥ 2.")
+
+        v1, v2 = s1**2 / n1, s2**2 / n2
+        gl = int((v1 + v2)**2 / (v1**2 / (n1 - 1) + v2**2 / (n2 - 1)))
+        t = self._t(gl)
+        se = math.sqrt(v1 + v2)
+        diff = x1 - x2
+        e = t * se
+        li, ls = diff - e, diff + e
+
+        return {
+            **self._base("Caso 3: t Welch — varianzas distintas", f"t-Student Welch (gl = {gl})"),
+            "t_critico": round(t, 4),
+            "grados_libertad": gl,
+            "n1": n1, "x1": x1, "s1": s1,
+            "n2": n2, "x2": x2, "s2": s2,
+            "s1_cuad_div_n1": round(v1, 6),
+            "s2_cuad_div_n2": round(v2, 6),
+            "diferencia_medias": round(diff, 6),
+            "error_estandar": round(se, 6),
+            "margen_error": round(e, 6),
+            "limite_inferior": round(li, 6),
+            "limite_superior": round(ls, 6),
+            "interpretacion": self._interpreta(li, ls),
+        }
+
+    # ── Caso 4: Z, muestras grandes (n₁,n₂ ≥ 30) ────────────────────────────
+
+    def caso4_muestras_grandes(
+        self, n1: int, x1: float, s1: float,
+        n2: int, x2: float, s2: float,
+    ) -> dict:
+        """IC para μ₁−μ₂ con n₁,n₂ ≥ 30. Usa Z por TLC aunque σ sea desconocida."""
+        if n1 < 30 or n2 < 30:
+            raise ValueError("Ambas muestras deben tener n ≥ 30 para aplicar el TLC.")
+
+        Z = self._z()
+        se = math.sqrt(s1**2 / n1 + s2**2 / n2)
+        diff = x1 - x2
+        e = Z * se
+        li, ls = diff - e, diff + e
+
+        return {
+            **self._base("Caso 4: Z — muestras grandes n≥30 (TLC)", "Z (normal estándar, TLC)"),
+            "z": round(Z, 4),
+            "n1": n1, "x1": x1, "s1": s1,
+            "n2": n2, "x2": x2, "s2": s2,
+            "diferencia_medias": round(diff, 6),
+            "error_estandar": round(se, 6),
+            "margen_error": round(e, 6),
+            "limite_inferior": round(li, 6),
+            "limite_superior": round(ls, 6),
+            "interpretacion": self._interpreta(li, ls),
+        }
+
+    # ── Caso Pareadas: t sobre d̄ ─────────────────────────────────────────────
+
+    def caso_pareadas(self, n: int, d_bar: float, sd: float) -> dict:
+        """IC para μ_d en muestras dependientes. Fórmula: d̄ ± t(α/2, n-1)·(Sd/√n)."""
+        if n < 2:
+            raise ValueError("n debe ser ≥ 2.")
+        if sd < 0:
+            raise ValueError("Sd no puede ser negativo.")
+
+        gl = n - 1
+        t = self._t(gl)
+        se = sd / math.sqrt(n)
+        e = t * se
+        li, ls = d_bar - e, d_bar + e
+
+        return {
+            **self._base("Caso Pareadas: t — muestras dependientes", f"t-Student (gl = {gl})"),
+            "t_critico": round(t, 4),
+            "grados_libertad": gl,
+            "n": n,
+            "d_bar": d_bar,
+            "sd": sd,
+            "diferencia_medias": round(d_bar, 6),
+            "error_estandar": round(se, 6),
+            "margen_error": round(e, 6),
+            "limite_inferior": round(li, 6),
+            "limite_superior": round(ls, 6),
+            "interpretacion": self._interpreta(li, ls),
+        }

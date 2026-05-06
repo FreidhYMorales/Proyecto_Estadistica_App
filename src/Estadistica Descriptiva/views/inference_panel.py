@@ -16,8 +16,8 @@ renderizan un gráfico de la distribución con la región sombreada.
 from tkinter import messagebox
 import customtkinter as ctk
 
-from views.theme import FONT_SECTION, FONT_SMALL, PAD_S, PAD_M, PAD_L
-from views.components import clear_frame, CTkDropdown, ResultTextWidget, GraphCanvas
+from views.theme import FONT_SECTION, FONT_SMALL, PAD_XS, PAD_S, PAD_M, PAD_L
+from views.components import clear_frame, CTkDropdown, ResultTextWidget, GraphCanvas, DataTreeview
 
 
 # Opciones de nivel de confianza
@@ -55,7 +55,10 @@ class InferencePanel:
     def _build_toolbar(self) -> None:
         CTkDropdown(
             self._toolbar, "IC — Proporción",
-            items=[("Calcular IC para Proporción", self._show_ic_prop)],
+            items=[
+                ("Calcular IC para Proporción (éxitos / n)", self._show_ic_prop),
+                ("Calcular IC para Proporción (p directo)",  self._show_ic_prop_directa),
+            ],
             font=FONT_SMALL,
         ).pack(side="left", padx=PAD_S, pady=PAD_S)
 
@@ -79,10 +82,31 @@ class InferencePanel:
         ).pack(side="left", padx=PAD_S, pady=PAD_S)
 
         CTkDropdown(
-            self._toolbar, "Tamaño de Muestra",
+            self._toolbar, "IC — Dos Muestras",
             items=[
-                ("Para proporción", self._show_ss_prop),
-                ("Para media", self._show_ss_media),
+                ("σ conocidas — Caso 1 (Z)",                   self._show_ic_2m_caso1),
+                ("σ desconocidas, varianzas iguales — Caso 2 (t)", self._show_ic_2m_caso2),
+                ("σ desconocidas, varianzas distintas — Caso 3 (t Welch)", self._show_ic_2m_caso3),
+                ("Muestras grandes n≥30 — Caso 4 (Z)",         self._show_ic_2m_caso4),
+                ("Muestras pareadas",                           self._show_ic_2m_pareadas),
+            ],
+            font=FONT_SMALL,
+        ).pack(side="left", padx=PAD_S, pady=PAD_S)
+
+        CTkDropdown(
+            self._toolbar, "Muestra — Con N",
+            items=[
+                ("Para proporción (Con N conocida)", self._show_ss_prop_con_n),
+                ("Para media (Con N conocida)",      self._show_ss_media_con_n),
+            ],
+            font=FONT_SMALL,
+        ).pack(side="left", padx=PAD_S, pady=PAD_S)
+
+        CTkDropdown(
+            self._toolbar, "Muestra — Sin N",
+            items=[
+                ("Para proporción (Sin N)", self._show_ss_prop_sin_n),
+                ("Para media (Sin N)",      self._show_ss_media_sin_n),
             ],
             font=FONT_SMALL,
         ).pack(side="left", padx=PAD_S, pady=PAD_S)
@@ -139,6 +163,47 @@ class InferencePanel:
         graph = GraphCanvas(graph_frame)
 
         return control, result, graph
+
+    def _make_sample_panel(self, titulo: str):
+        """Layout: title → controls → small text result → expandable sample table.
+        Returns (control_frame, ResultTextWidget, DataTreeview)."""
+        clear_frame(self._content)
+        for r in range(4):
+            self._content.rowconfigure(r, weight=0)
+        self._content.rowconfigure(3, weight=1)
+        self._content.columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(self._content, text=titulo, font=FONT_SECTION, anchor="w").grid(
+            row=0, column=0, sticky="w", padx=PAD_L, pady=(PAD_M, 0)
+        )
+        control = ctk.CTkFrame(self._content, fg_color="transparent")
+        control.grid(row=1, column=0, sticky="ew", padx=PAD_M, pady=PAD_S)
+
+        # Fixed-height text result area
+        result_outer = ctk.CTkFrame(self._content, fg_color="transparent", height=100)
+        result_outer.grid(row=2, column=0, sticky="ew")
+        result_outer.grid_propagate(False)
+        result_outer.rowconfigure(0, weight=1)
+        result_outer.columnconfigure(0, weight=1)
+        result = ResultTextWidget(result_outer, font=("Courier", 11))
+
+        # Sample table (expandable)
+        table_frame = ctk.CTkFrame(self._content, fg_color="transparent")
+        table_frame.grid(row=3, column=0, sticky="nsew")
+        table_frame.rowconfigure(1, weight=1)
+        table_frame.columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            table_frame,
+            text="Muestra aleatoria extraída del dataset cargado:",
+            font=FONT_SMALL, anchor="w",
+        ).grid(row=0, column=0, sticky="w", padx=PAD_M, pady=(PAD_S, 0))
+        tree_inner = ctk.CTkFrame(table_frame, fg_color="transparent")
+        tree_inner.grid(row=1, column=0, sticky="nsew")
+        tree_inner.rowconfigure(0, weight=1)
+        tree_inner.columnconfigure(0, weight=1)
+        tree = DataTreeview(tree_inner)
+
+        return control, result, tree
 
     def _nc_combo(self, parent) -> ctk.CTkComboBox:
         ctk.CTkLabel(parent, text="Confianza:", font=FONT_SMALL).pack(side="left", padx=PAD_S)
@@ -363,26 +428,60 @@ class InferencePanel:
                       command=lambda: result.export("ic_varianza_manual.txt")).pack(
             side="left", padx=PAD_S)
 
-    # ── Tamaño de muestra — Proporción ────────────────────────────────────────
+    # ── Tamaño de muestra — Proporción con N conocida ─────────────────────────
 
-    def _show_ss_prop(self) -> None:
-        control, result = self._make_text_panel("Tamaño de Muestra — Para Proporción")
+    def _show_ss_prop_con_n(self) -> None:
+        control, result, tree = self._make_sample_panel(
+            "Tamaño de Muestra — Proporción (Con N conocida)")
 
         nc_combo = self._nc_combo(control)
-        e_entry = self._labeled_entry(control, "Margen error (e):", "0.05")
-        p_entry = self._labeled_entry(control, "p esperada:", "0.5")
-        n_entry = self._labeled_entry(control, "N pobl. (opcional):", "", width=110)
+        e_entry  = self._labeled_entry(control, "Margen error (e):", "0.05")
+        p_entry  = self._labeled_entry(control, "p esperada:", "0.5")
+        n_entry  = self._labeled_entry(control, "N población:", "500", width=110)
         pe_entry = self._labeled_entry(control, "% pérdidas (0-1):", "", width=80)
 
         def calcular():
             try:
                 nc = _NC_MAP[nc_combo.get()]
                 N_txt = n_entry.get().strip()
+                if not N_txt:
+                    messagebox.showerror("Error", "Ingrese el tamaño de la población N.")
+                    return
                 pe_txt = pe_entry.get().strip()
-                poblacion = int(N_txt) if N_txt else None
-                perdidas = float(pe_txt) if pe_txt else None
                 res = self._ctrl.sample_size_proportion(
-                    float(e_entry.get()), float(p_entry.get()), nc, poblacion, perdidas
+                    float(e_entry.get()), float(p_entry.get()), nc,
+                    int(N_txt), float(pe_txt) if pe_txt else None,
+                )
+                result.set(_fmt_sample_size(res))
+                _draw_sample(res["n_recomendada"], self._ctrl, tree)
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(control, text="Calcular y Muestrear", font=FONT_SMALL, height=28,
+                      command=calcular).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(control, text="Exportar resultado", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      command=lambda: result.export("muestra_prop_con_n.txt")).pack(
+            side="left", padx=PAD_S)
+
+    # ── Tamaño de muestra — Proporción sin N ──────────────────────────────────
+
+    def _show_ss_prop_sin_n(self) -> None:
+        control, result = self._make_text_panel(
+            "Tamaño de Muestra — Proporción (Sin N conocida)")
+
+        nc_combo = self._nc_combo(control)
+        e_entry  = self._labeled_entry(control, "Margen error (e):", "0.05")
+        p_entry  = self._labeled_entry(control, "p esperada:", "0.5")
+        pe_entry = self._labeled_entry(control, "% pérdidas (0-1):", "", width=80)
+
+        def calcular():
+            try:
+                nc = _NC_MAP[nc_combo.get()]
+                pe_txt = pe_entry.get().strip()
+                res = self._ctrl.sample_size_proportion(
+                    float(e_entry.get()), float(p_entry.get()), nc,
+                    None, float(pe_txt) if pe_txt else None,
                 )
                 result.set(_fmt_sample_size(res))
             except Exception as e:
@@ -392,29 +491,63 @@ class InferencePanel:
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
                       fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
-                      command=lambda: result.export("tamano_muestra_prop.txt")).pack(
+                      command=lambda: result.export("muestra_prop_sin_n.txt")).pack(
             side="left", padx=PAD_S)
 
-    # ── Tamaño de muestra — Media ─────────────────────────────────────────────
+    # ── Tamaño de muestra — Media con N conocida ──────────────────────────────
 
-    def _show_ss_media(self) -> None:
-        control, result = self._make_text_panel("Tamaño de Muestra — Para Media")
+    def _show_ss_media_con_n(self) -> None:
+        control, result, tree = self._make_sample_panel(
+            "Tamaño de Muestra — Media (Con N conocida)")
 
         nc_combo = self._nc_combo(control)
-        e_entry = self._labeled_entry(control, "Margen error (e):", "5")
-        s_entry = self._labeled_entry(control, "σ (desv. estándar):", "15")
-        n_entry = self._labeled_entry(control, "N pobl. (opcional):", "", width=110)
+        e_entry  = self._labeled_entry(control, "Margen error (e):", "5")
+        s_entry  = self._labeled_entry(control, "σ (desv. estándar):", "15")
+        n_entry  = self._labeled_entry(control, "N población:", "500", width=110)
         pe_entry = self._labeled_entry(control, "% pérdidas (0-1):", "", width=80)
 
         def calcular():
             try:
                 nc = _NC_MAP[nc_combo.get()]
                 N_txt = n_entry.get().strip()
+                if not N_txt:
+                    messagebox.showerror("Error", "Ingrese el tamaño de la población N.")
+                    return
                 pe_txt = pe_entry.get().strip()
-                poblacion = int(N_txt) if N_txt else None
-                perdidas = float(pe_txt) if pe_txt else None
                 res = self._ctrl.sample_size_mean(
-                    float(e_entry.get()), float(s_entry.get()), nc, poblacion, perdidas
+                    float(e_entry.get()), float(s_entry.get()), nc,
+                    int(N_txt), float(pe_txt) if pe_txt else None,
+                )
+                result.set(_fmt_sample_size(res))
+                _draw_sample(res["n_recomendada"], self._ctrl, tree)
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(control, text="Calcular y Muestrear", font=FONT_SMALL, height=28,
+                      command=calcular).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(control, text="Exportar resultado", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      command=lambda: result.export("muestra_media_con_n.txt")).pack(
+            side="left", padx=PAD_S)
+
+    # ── Tamaño de muestra — Media sin N ──────────────────────────────────────
+
+    def _show_ss_media_sin_n(self) -> None:
+        control, result = self._make_text_panel(
+            "Tamaño de Muestra — Media (Sin N conocida)")
+
+        nc_combo = self._nc_combo(control)
+        e_entry  = self._labeled_entry(control, "Margen error (e):", "5")
+        s_entry  = self._labeled_entry(control, "σ (desv. estándar):", "15")
+        pe_entry = self._labeled_entry(control, "% pérdidas (0-1):", "", width=80)
+
+        def calcular():
+            try:
+                nc = _NC_MAP[nc_combo.get()]
+                pe_txt = pe_entry.get().strip()
+                res = self._ctrl.sample_size_mean(
+                    float(e_entry.get()), float(s_entry.get()), nc,
+                    None, float(pe_txt) if pe_txt else None,
                 )
                 result.set(_fmt_sample_size(res))
             except Exception as e:
@@ -424,8 +557,254 @@ class InferencePanel:
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
                       fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
-                      command=lambda: result.export("tamano_muestra_media.txt")).pack(
+                      command=lambda: result.export("muestra_media_sin_n.txt")).pack(
             side="left", padx=PAD_S)
+
+
+    # ── IC Proporción — p directo ─────────────────────────────────────────────
+
+    def _show_ic_prop_directa(self) -> None:
+        control, result = self._make_text_panel("IC para Proporción — p directo")
+
+        nc_combo = self._nc_combo(control)
+        p_e = self._labeled_entry(control, "p (0–1):", "0.45", width=80)
+        n_e = self._labeled_entry(control, "n:", "100")
+
+        ctk.CTkLabel(control, text="Método:", font=FONT_SMALL).pack(side="left", padx=PAD_S)
+        met_combo = ctk.CTkComboBox(
+            control, values=["normal (Wald)", "wilson"],
+            state="readonly", font=FONT_SMALL, width=130, height=28,
+        )
+        met_combo.set("normal (Wald)")
+        met_combo.pack(side="left", padx=PAD_S)
+
+        def calcular():
+            try:
+                nc = _NC_MAP[nc_combo.get()]
+                metodo = "wilson" if "wilson" in met_combo.get() else "normal"
+                res = self._ctrl.ic_proporcion_directa(
+                    float(p_e.get()), int(n_e.get()), nc, metodo
+                )
+                result.set(_fmt_ic_prop_directa(res))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
+                      command=calcular).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      command=lambda: result.export("ic_proporcion_p.txt")).pack(
+            side="left", padx=PAD_S)
+
+    # ── IC Dos Muestras — helpers de layout ───────────────────────────────────
+
+    def _two_sample_rows(self, control, label_a: str, label_b: str,
+                         defaults_a: tuple, defaults_b: tuple, widths: tuple):
+        """Crea filas Muestra A / B dentro del control frame. Retorna (nc_combo, entries_a, entries_b, btn_row)."""
+        row0 = ctk.CTkFrame(control, fg_color="transparent")
+        row0.pack(fill="x", pady=(0, PAD_XS))
+        nc_combo = self._nc_combo(row0)
+
+        w1, w2, w3 = widths
+
+        row1 = ctk.CTkFrame(control, fg_color="transparent")
+        row1.pack(fill="x", pady=PAD_XS)
+        ctk.CTkLabel(row1, text="Muestra A:", font=FONT_SMALL, width=85,
+                     anchor="w").pack(side="left", padx=(PAD_M, 0))
+        entries_a = [
+            self._labeled_entry(row1, lbl, dflt, width=w)
+            for lbl, dflt, w in zip(label_a, defaults_a, (w1, w2, w3))
+        ]
+
+        row2 = ctk.CTkFrame(control, fg_color="transparent")
+        row2.pack(fill="x", pady=PAD_XS)
+        ctk.CTkLabel(row2, text="Muestra B:", font=FONT_SMALL, width=85,
+                     anchor="w").pack(side="left", padx=(PAD_M, 0))
+        entries_b = [
+            self._labeled_entry(row2, lbl, dflt, width=w)
+            for lbl, dflt, w in zip(label_b, defaults_b, (w1, w2, w3))
+        ]
+
+        row3 = ctk.CTkFrame(control, fg_color="transparent")
+        row3.pack(fill="x", pady=PAD_XS)
+
+        return nc_combo, entries_a, entries_b, row3
+
+    # ── IC Dos Muestras — Caso 1 ─────────────────────────────────────────────
+
+    def _show_ic_2m_caso1(self) -> None:
+        control, result = self._make_text_panel(
+            "IC — Diferencia de Medias: σ₁, σ₂ conocidas (Caso 1, Z)")
+
+        labels  = ("n₁:", "x̄₁:", "σ₁:")
+        defs_a  = ("50", "985", "12")
+        defs_b  = ("60", "960", "18")
+        nc_combo, ea, eb, btn_row = self._two_sample_rows(
+            control, labels, labels, defs_a, defs_b, (55, 70, 70))
+
+        def calcular():
+            try:
+                nc = _NC_MAP[nc_combo.get()]
+                res = self._ctrl.ic_dos_medias_caso1(
+                    int(ea[0].get()), float(ea[1].get()), float(ea[2].get()),
+                    int(eb[0].get()), float(eb[1].get()), float(eb[2].get()),
+                    nc,
+                )
+                result.set(_fmt_ic_dos_medias(res))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(btn_row, text="Calcular", font=FONT_SMALL, height=28,
+                      command=calcular).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(btn_row, text="Exportar", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      command=lambda: result.export("ic_2m_caso1.txt")).pack(
+            side="left", padx=PAD_S)
+
+    # ── IC Dos Muestras — Caso 2 ─────────────────────────────────────────────
+
+    def _show_ic_2m_caso2(self) -> None:
+        control, result = self._make_text_panel(
+            "IC — Diferencia de Medias: varianzas iguales (Caso 2, t sp²)")
+
+        labels  = ("n:", "x̄:", "s:")
+        defs_a  = ("12", "450", "30")
+        defs_b  = ("10", "410", "25")
+        nc_combo, ea, eb, btn_row = self._two_sample_rows(
+            control, labels, labels, defs_a, defs_b, (55, 70, 70))
+
+        def calcular():
+            try:
+                nc = _NC_MAP[nc_combo.get()]
+                res = self._ctrl.ic_dos_medias_caso2(
+                    int(ea[0].get()), float(ea[1].get()), float(ea[2].get()),
+                    int(eb[0].get()), float(eb[1].get()), float(eb[2].get()),
+                    nc,
+                )
+                result.set(_fmt_ic_dos_medias(res))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(btn_row, text="Calcular", font=FONT_SMALL, height=28,
+                      command=calcular).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(btn_row, text="Exportar", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      command=lambda: result.export("ic_2m_caso2.txt")).pack(
+            side="left", padx=PAD_S)
+
+    # ── IC Dos Muestras — Caso 3 ─────────────────────────────────────────────
+
+    def _show_ic_2m_caso3(self) -> None:
+        control, result = self._make_text_panel(
+            "IC — Diferencia de Medias: varianzas distintas (Caso 3, t Welch)")
+
+        labels  = ("n:", "x̄:", "s:")
+        defs_a  = ("8", "45", "3")
+        defs_b  = ("10", "52", "8")
+        nc_combo, ea, eb, btn_row = self._two_sample_rows(
+            control, labels, labels, defs_a, defs_b, (55, 70, 70))
+
+        def calcular():
+            try:
+                nc = _NC_MAP[nc_combo.get()]
+                res = self._ctrl.ic_dos_medias_caso3(
+                    int(ea[0].get()), float(ea[1].get()), float(ea[2].get()),
+                    int(eb[0].get()), float(eb[1].get()), float(eb[2].get()),
+                    nc,
+                )
+                result.set(_fmt_ic_dos_medias(res))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(btn_row, text="Calcular", font=FONT_SMALL, height=28,
+                      command=calcular).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(btn_row, text="Exportar", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      command=lambda: result.export("ic_2m_caso3.txt")).pack(
+            side="left", padx=PAD_S)
+
+    # ── IC Dos Muestras — Caso 4 ─────────────────────────────────────────────
+
+    def _show_ic_2m_caso4(self) -> None:
+        control, result = self._make_text_panel(
+            "IC — Diferencia de Medias: muestras grandes n≥30 (Caso 4, Z)")
+
+        labels  = ("n≥30:", "x̄:", "s:")
+        defs_a  = ("40", "120", "15")
+        defs_b  = ("50", "132", "20")
+        nc_combo, ea, eb, btn_row = self._two_sample_rows(
+            control, labels, labels, defs_a, defs_b, (55, 70, 70))
+
+        def calcular():
+            try:
+                nc = _NC_MAP[nc_combo.get()]
+                res = self._ctrl.ic_dos_medias_caso4(
+                    int(ea[0].get()), float(ea[1].get()), float(ea[2].get()),
+                    int(eb[0].get()), float(eb[1].get()), float(eb[2].get()),
+                    nc,
+                )
+                result.set(_fmt_ic_dos_medias(res))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(btn_row, text="Calcular", font=FONT_SMALL, height=28,
+                      command=calcular).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(btn_row, text="Exportar", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      command=lambda: result.export("ic_2m_caso4.txt")).pack(
+            side="left", padx=PAD_S)
+
+    # ── IC Dos Muestras — Caso Pareadas ──────────────────────────────────────
+
+    def _show_ic_2m_pareadas(self) -> None:
+        control, result = self._make_text_panel(
+            "IC — Diferencia de Medias: Muestras Pareadas (t)")
+
+        nc_combo = self._nc_combo(control)
+        n_e    = self._labeled_entry(control, "n (pares):", "10", width=60)
+        dbar_e = self._labeled_entry(control, "d̄:", "5.2", width=80)
+        sd_e   = self._labeled_entry(control, "Sd:", "2.8", width=70)
+
+        def calcular():
+            try:
+                nc = _NC_MAP[nc_combo.get()]
+                res = self._ctrl.ic_dos_medias_pareadas(
+                    int(n_e.get()), float(dbar_e.get()), float(sd_e.get()), nc
+                )
+                result.set(_fmt_ic_dos_medias(res))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
+                      command=calcular).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
+                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      command=lambda: result.export("ic_2m_pareadas.txt")).pack(
+            side="left", padx=PAD_S)
+
+
+# ── Sample drawing helper ─────────────────────────────────────────────────────
+
+def _draw_sample(n_recomendada: int, ctrl, tree: DataTreeview) -> None:
+    """Draw n_recomendada random rows from the loaded dataset into the tree."""
+    df = ctrl.get_dataframe()
+    if df.empty:
+        messagebox.showwarning(
+            "Sin datos",
+            f"n recomendada = {n_recomendada}.\n"
+            "No hay dataset cargado para extraer la muestra.\n"
+            "Importe un archivo desde la barra lateral.",
+        )
+        return
+    actual_n = min(n_recomendada, len(df))
+    sampled = df.sample(actual_n).reset_index(drop=True)
+    tree.load(sampled)
+    if actual_n < n_recomendada:
+        messagebox.showwarning(
+            "Dataset pequeño",
+            f"El dataset solo tiene {len(df)} filas.\n"
+            f"Se extrajeron {actual_n} en lugar de {n_recomendada}.",
+        )
 
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
@@ -550,5 +929,91 @@ def _fmt_sample_size(r: dict) -> str:
         "",
         f"  ★ n RECOMENDADA     : {r['n_recomendada']}",
         "=" * 58,
+    ]
+    return "\n".join(lineas)
+
+
+def _fmt_ic_prop_directa(r: dict) -> str:
+    lineas = [
+        "=" * 58,
+        "  INTERVALO DE CONFIANZA — PROPORCIÓN (p directo)",
+        "=" * 58,
+        f"  Nivel de confianza  : {r['nivel_confianza']}",
+        f"  Método              : {r['metodo']}",
+        f"  Z crítico (Zα/2)    : {r['z']}",
+        f"  Tamaño muestra (n)  : {r['n']}",
+        f"  Proporción (p)      : {r['p']}",
+        f"  q = 1 − p           : {r['q']}",
+        f"  p × q               : {r['p_por_q']}",
+        f"  p × q / n           : {r['p_por_q_div_n']}",
+        f"  Error estándar SE   : {r['error_estandar']}",
+        f"  Margen de error E   : ±{r['margen_error']}",
+        "",
+        "  ┌──────────────────────────────────────────────┐",
+        f"  │  IC: [ {r['limite_inferior']:.6f}  ,  {r['limite_superior']:.6f} ]  │",
+        "  └──────────────────────────────────────────────┘",
+    ]
+    if r.get("advertencia"):
+        lineas += ["", f"  {r['advertencia']}"]
+    lineas.append("=" * 58)
+    return "\n".join(lineas)
+
+
+def _fmt_ic_dos_medias(r: dict) -> str:
+    w = 64
+    lineas = [
+        "=" * w,
+        f"  {r['caso']}",
+        "=" * w,
+        f"  Nivel de confianza    : {r['nivel_confianza']}",
+        f"  Distribución          : {r['distribucion']}",
+    ]
+
+    if "z" in r:
+        lineas.append(f"  Z crítico (Zα/2)      : {r['z']}")
+    if "t_critico" in r:
+        lineas.append(f"  t crítico (tα/2, gl)  : {r['t_critico']}")
+        gl_key = "grados_libertad" if "grados_libertad" in r else "grados_libertad_welch"
+        lineas.append(f"  Grados de libertad    : {r[gl_key]}")
+
+    lineas.append("")
+
+    is_paired = "d_bar" in r
+    if is_paired:
+        lineas += [
+            f"  n (pares)             : {r['n']}",
+            f"  d̄ (media diferencias) : {r['d_bar']}",
+            f"  Sd (desv. diferencias): {r['sd']}",
+        ]
+    else:
+        sp_a = "sigma1" if "sigma1" in r else "s1"
+        sp_b = "sigma2" if "sigma2" in r else "s2"
+        lbl_a = "σ₁" if "sigma1" in r else "s₁"
+        lbl_b = "σ₂" if "sigma2" in r else "s₂"
+        lineas += [
+            f"  Muestra A: n₁={r['n1']}, x̄₁={r['x1']}, {lbl_a}={r[sp_a]}",
+            f"  Muestra B: n₂={r['n2']}, x̄₂={r['x2']}, {lbl_b}={r[sp_b]}",
+        ]
+
+    if "varianza_ponderada_sp2" in r:
+        lineas.append(f"  Varianza ponderada sp²: {r['varianza_ponderada_sp2']}")
+    if "s1_cuad_div_n1" in r:
+        lineas += [
+            f"  s₁²/n₁                : {r['s1_cuad_div_n1']}",
+            f"  s₂²/n₂                : {r['s2_cuad_div_n2']}",
+        ]
+
+    lineas += [
+        "",
+        f"  Diferencia (x̄₁−x̄₂)   : {r['diferencia_medias']}",
+        f"  Error estándar SE     : {r['error_estandar']}",
+        f"  Margen de error E     : ±{r['margen_error']}",
+        "",
+        "  ┌──────────────────────────────────────────────────────┐",
+        f"  │  IC: [ {r['limite_inferior']:.6f}  ,  {r['limite_superior']:.6f} ]  │",
+        "  └──────────────────────────────────────────────────────┘",
+        "",
+        f"  ▶ {r['interpretacion']}",
+        "=" * w,
     ]
     return "\n".join(lineas)

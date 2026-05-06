@@ -6,7 +6,7 @@ from models.table import Table
 from utils.trends import Trends
 from utils.statistics import CentralMeasures, DispersionMeasures
 from utils.sampling import MetodosMuestreo, MuestreoNoProbabilistico, ErroresMuestreo
-from utils.inference import IntervalosConfianza, CalculadorTamanioMuestra
+from utils.inference import IntervalosConfianza, CalculadorTamanioMuestra, ICDosMedias
 
 
 class AppController:
@@ -92,7 +92,7 @@ class AppController:
         win = ctk.CTkToplevel()
         win.title("Seleccionar hoja")
         win.resizable(False, False)
-        win.grab_set()
+        win.after(200, win.grab_set)
 
         ctk.CTkLabel(win, text="El archivo tiene varias hojas.\nSelecciona cuál importar:",
                      font=("Arial", 11)).pack(padx=20, pady=(15, 5))
@@ -125,6 +125,11 @@ class AppController:
         win.wait_window()
         return result[0]
 
+    def load_file_direct(self, path: str, sheet=None) -> None:
+        """Loads a file at a known path without showing a file-picker dialog.
+        Called by DatasetImportDialog after the user has already selected the file."""
+        self.table.load_from_file(path, sheet_name=sheet if sheet is not None else 0)
+
     # ── Frequency tables ────────────────────────────────────────────────────
 
     def get_grouped_table(self, column_name: str):
@@ -137,10 +142,22 @@ class AppController:
         return Trends.append_totals(table)
 
     def get_ungrouped_table(self, column_name: str):
-        """Returns a non-grouped frequency DataFrame ready for display."""
-        data = self.table.get_numeric_column(column_name)
+        """Returns a non-grouped frequency DataFrame ready for display.
+        Supports both numeric and text columns."""
+        import math
+        raw = self.table.get_column(column_name)
+        data = []
+        for v in raw:
+            if v == "-" or v is None:
+                continue
+            try:
+                if isinstance(v, float) and math.isnan(v):
+                    continue
+            except (TypeError, ValueError):
+                pass
+            data.append(v)
         if not data:
-            raise ValueError(f"No hay datos numéricos en '{column_name}'.")
+            raise ValueError(f"No hay datos en '{column_name}'.")
         return Trends.build_ungrouped_table(data)
 
     # ── Statistical measures ────────────────────────────────────────────────
@@ -223,6 +240,13 @@ class AppController:
         return mm.conglomerados(df, cluster_col, k)
 
     # ── Confidence Intervals ─────────────────────────────────────────────────
+
+    def ic_proporcion_directa(
+        self, p: float, n: int, nivel_confianza: float = 0.95, metodo: str = "normal"
+    ) -> dict:
+        """IC para proporción ingresando p directamente."""
+        ic = IntervalosConfianza(nivel_confianza)
+        return ic.ic_proporcion_directa(p, n, metodo)
 
     def ic_proporcion(
         self, exitos: int, n: int, nivel_confianza: float = 0.95, metodo: str = "normal"
@@ -362,3 +386,44 @@ class AppController:
         """Calcula errores de muestreo para una proporción."""
         em = ErroresMuestreo(nivel_confianza)
         return em.para_proporcion(exitos, n, N, p_real)
+
+    # ── IC Diferencia de Dos Medias ───────────────────────────────────────────
+
+    def ic_dos_medias_caso1(
+        self, n1: int, x1: float, sigma1: float,
+        n2: int, x2: float, sigma2: float,
+        nivel_confianza: float = 0.95,
+    ) -> dict:
+        """IC μ₁−μ₂ — Caso 1: Z con σ₁, σ₂ conocidas."""
+        return ICDosMedias(nivel_confianza).caso1_sigma_conocida(n1, x1, sigma1, n2, x2, sigma2)
+
+    def ic_dos_medias_caso2(
+        self, n1: int, x1: float, s1: float,
+        n2: int, x2: float, s2: float,
+        nivel_confianza: float = 0.95,
+    ) -> dict:
+        """IC μ₁−μ₂ — Caso 2: t con varianzas iguales (sp²)."""
+        return ICDosMedias(nivel_confianza).caso2_varianzas_iguales(n1, x1, s1, n2, x2, s2)
+
+    def ic_dos_medias_caso3(
+        self, n1: int, x1: float, s1: float,
+        n2: int, x2: float, s2: float,
+        nivel_confianza: float = 0.95,
+    ) -> dict:
+        """IC μ₁−μ₂ — Caso 3: t Welch con varianzas distintas."""
+        return ICDosMedias(nivel_confianza).caso3_welch(n1, x1, s1, n2, x2, s2)
+
+    def ic_dos_medias_caso4(
+        self, n1: int, x1: float, s1: float,
+        n2: int, x2: float, s2: float,
+        nivel_confianza: float = 0.95,
+    ) -> dict:
+        """IC μ₁−μ₂ — Caso 4: Z con n₁, n₂ ≥ 30 (TLC)."""
+        return ICDosMedias(nivel_confianza).caso4_muestras_grandes(n1, x1, s1, n2, x2, s2)
+
+    def ic_dos_medias_pareadas(
+        self, n: int, d_bar: float, sd: float,
+        nivel_confianza: float = 0.95,
+    ) -> dict:
+        """IC μ_d — Caso Pareadas: t sobre d̄."""
+        return ICDosMedias(nivel_confianza).caso_pareadas(n, d_bar, sd)
