@@ -268,17 +268,28 @@ El panel de Errores de Muestreo muestra además una **tabla clasificatoria de lo
 
 ## `views/inference_panel.py` — `InferencePanel`
 
-Panel registrado bajo la clave `"inference"`. Toolbar con tres dropdowns:
+Panel registrado bajo la clave `"inference"`. Toolbar con seis dropdowns:
 
 | Dropdown | Opciones |
 |---|---|
-| IC — Proporción | Calcular IC para Proporción (Wald o Wilson) |
+| IC — Proporción | Éxitos/n (Wald o Wilson) / p directo (Wald o Wilson) |
 | IC — Media | σ conocida (Z) / σ desconocida datos (t) / σ desconocida manual (t) |
-| Tamaño de Muestra | Para proporción / Para media |
+| IC — Varianza | Desde datos cargados / Valores manuales (s, n) |
+| IC — Dos Muestras | Caso 1 (σ conocidas, Z) / Caso 2 (var. iguales, t sp²) / Caso 3 (Welch, t) / Caso 4 (n≥30, Z) / Muestras pareadas (t) |
+| Muestra — Con N | Para proporción / Para media (con corrección por población finita) |
+| Muestra — Sin N | Para proporción / Para media |
 
-Los paneles de IC para Media usan `_make_graph_panel` y renderizan la distribución muestral con la región de confianza sombreada (`utils/inference_graphs.build_normal_dist_ic`).
+**Nivel de confianza:** todos los sub-paneles incluyen un `CTkEntry` de ancho 55 px con valor por defecto `"95"`. Acepta cualquier número entre 0 y 100 (con o sin `%`, o como fracción ej. `0.95`). La función `_parse_nc(text)` convierte el texto a fracción y lanza `ValueError` si el valor es inválido — el error se muestra via `messagebox.showerror` en todos los bloques `calcular()`.
 
-Los paneles de IC para Proporción y Tamaño de Muestra usan `_make_text_panel`.
+**Tipos de panel:**
+- IC para Media: usa `_make_graph_panel` y renderiza distribución muestral con región sombreada (`utils/inference_graphs.build_normal_dist_ic`)
+- IC para Proporción, IC Varianza, IC Dos Muestras, Tamaño de Muestra: usan `_make_text_panel`
+
+**Formato de salida:**
+- IC para Proporción: los límites, p̂/p, q y el margen se muestran como **porcentaje** (ej. `45.0000%`). Los intermedios del cálculo (p×q, p×q/n, SE) se mantienen como decimales.
+- Resto de IC: valores decimales con 6 cifras.
+
+**Helper de layout para Dos Muestras:** `_two_sample_rows(control, label_a, label_b, defaults_a, defaults_b, widths)` — apila 4 sub-frames (`row0`=NC, `row1`=Muestra A, `row2`=Muestra B, `row3`=botones) dentro del `control` frame usando `pack(fill="x")`. Retorna `(nc_entry, entries_a, entries_b, btn_row)`.
 
 Todos los resultados incluyen botón **Exportar** que guarda el texto a `.txt` vía `ResultTextWidget.export()`.
 

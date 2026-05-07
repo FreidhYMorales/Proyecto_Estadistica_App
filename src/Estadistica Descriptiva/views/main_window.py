@@ -46,10 +46,15 @@ import importlib
 import customtkinter as ctk
 
 from views.theme import (
-    FONT_TITLE, FONT_SECTION, FONT_NORMAL, FONT_SMALL,
+    FONT_TITLE, FONT_SECTION, FONT_NORMAL, FONT_SMALL, FONT_MONO,
     PAD_XS, PAD_S, PAD_M, PAD_L,
+    SUBTOOLBAR_H, TOOLBAR_BG,
+    CLR_BTN_PRIMARY, CLR_BTN_SECONDARY,
+    CLR_HOVER_PRIMARY, CLR_HOVER_SECONDARY,
+    SIDEBAR_BG, SIDEBAR_TOGGLE_BG, CLR_DIVIDER, CLR_PLACEHOLDER,
     apply_treeview_dark_style,
 )
+from views.dialogs.base_dialog import BaseDialog
 from views.dialogs.dataset_import_dialog import DatasetImportDialog
 
 # ── Layout constants ──────────────────────────────────────────────────────────
@@ -94,9 +99,13 @@ class DataTable(ctk.CTkFrame):
         self._tree["columns"] = columns
         self._tree.column("#0", width=50, stretch=False)
         self._tree.heading("#0", text="#")
-        for col in columns:
+        char_px = 8
+        for i, col in enumerate(columns):
+            col_vals = [str(row[i]) for row in rows] if rows else []
+            max_chars = max(len(str(col)), max((len(v) for v in col_vals), default=0))
+            col_w = max(60, min(int(max_chars * char_px) + 16, 240))
             self._tree.heading(col, text=col)
-            self._tree.column(col, anchor="center", width=90, minwidth=60)
+            self._tree.column(col, anchor="center", width=col_w, minwidth=60)
         for idx, row in enumerate(rows, start=1):
             self._tree.insert("", "end", text=str(idx), values=row)
 
@@ -123,7 +132,7 @@ class FrequencyPanel:
             self._root,
             text="Selecciona una variable y tipo de tabla en el panel izquierdo →",
             font=FONT_SECTION, anchor="w",
-            text_color=("gray40", "gray60"),
+            text_color=CLR_PLACEHOLDER,
         )
         self._header.grid(row=0, column=0, sticky="w",
                           padx=PAD_L, pady=(PAD_M, PAD_XS))
@@ -171,15 +180,15 @@ class Sidebar(ctk.CTkScrollableFrame):
             text_color=("gray30", "gray70"),
         ).pack(fill="x", padx=PAD_M, pady=(PAD_L, PAD_XS))
         ctk.CTkFrame(self, height=1,
-                     fg_color=("gray70", "gray40")).pack(
+                     fg_color=CLR_DIVIDER).pack(
             fill="x", padx=PAD_M, pady=(0, PAD_S))
 
     def _action_btn(self, text: str, cmd, **kw) -> ctk.CTkButton:
         btn = ctk.CTkButton(
             self, text=text, font=FONT_SMALL,
             height=32, anchor="w",
-            fg_color=("gray70", "gray30"),
-            hover_color=("gray60", "gray40"),
+            fg_color=CLR_BTN_SECONDARY,
+            hover_color=CLR_HOVER_SECONDARY,
             command=cmd, **kw,
         )
         btn.pack(fill="x", padx=PAD_M, pady=PAD_XS)
@@ -219,16 +228,16 @@ class Sidebar(ctk.CTkScrollableFrame):
                       command=self._cb["add_column"]).grid(
             row=0, column=0, sticky="ew", padx=(0, PAD_XS))
         ctk.CTkButton(r1, text="Editar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"),
-                      hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY,
+                      hover_color=CLR_HOVER_SECONDARY,
                       command=self._cb["edit_column"]).grid(
             row=0, column=1, sticky="ew", padx=(PAD_XS, 0))
 
         ctk.CTkButton(
             self, text="⬆  Importar CSV / Excel",
             font=FONT_SMALL, height=30,
-            fg_color=("#3a7ebf", "#1f6aa5"),
-            hover_color=("#2d6296", "#17528a"),
+            fg_color=CLR_BTN_PRIMARY,
+            hover_color=CLR_HOVER_PRIMARY,
             command=self._cb["import_file"],
         ).pack(fill="x", padx=PAD_M, pady=(PAD_XS, 0))
 
@@ -263,8 +272,8 @@ class Sidebar(ctk.CTkScrollableFrame):
         r2.pack(fill="x", padx=PAD_M, pady=PAD_XS)
         r2.columnconfigure((0, 1), weight=1)
         ctk.CTkButton(r2, text="Nueva fila", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"),
-                      hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY,
+                      hover_color=CLR_HOVER_SECONDARY,
                       command=self._cb["add_row"]).grid(
             row=0, column=0, sticky="ew", padx=(0, PAD_XS))
         ctk.CTkButton(r2, text="Guardar", font=FONT_SMALL, height=28,
@@ -281,9 +290,49 @@ class Sidebar(ctk.CTkScrollableFrame):
         )
         self.col_selector.pack(fill="x", padx=PAD_M, pady=(PAD_XS, PAD_S))
 
-        self._action_btn("  Tabla Agrupada",    self._cb["grouped_table"])
-        self._action_btn("  Tabla No Agrupada", self._cb["ungrouped_table"])
-        self._action_btn("  Medidas Centrales", self._cb["central_measures"])
+        self._action_btn("Tabla Agrupada",    self._cb["grouped_table"])
+        self._action_btn("Tabla No Agrupada", self._cb["ungrouped_table"])
+        self._action_btn("Medidas Centrales", self._cb["central_measures"])
+
+
+# ── _EditColumnDialog ─────────────────────────────────────────────────────────
+
+class _EditColumnDialog(BaseDialog):
+    """Modal dialog for renaming a dataset column. Returns (old_name, new_name) or None."""
+
+    def __init__(self, parent, columns):
+        self._columns = columns
+        super().__init__(parent, "Editar nombre de variable", width=340, height=180)
+
+    def _build_ui(self) -> None:
+        content = ctk.CTkFrame(self, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=PAD_L, pady=PAD_L)
+        content.columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(content, text="Variable:", font=FONT_SMALL, anchor="w").grid(
+            row=0, column=0, sticky="w", pady=PAD_S, padx=(0, PAD_M))
+        self._col_combo = ctk.CTkComboBox(
+            content, values=list(self._columns), state="readonly", font=FONT_SMALL,
+        )
+        if self._columns:
+            self._col_combo.set(self._columns[0])
+        self._col_combo.grid(row=0, column=1, sticky="ew", pady=PAD_S)
+
+        ctk.CTkLabel(content, text="Nuevo nombre:", font=FONT_SMALL, anchor="w").grid(
+            row=1, column=0, sticky="w", pady=PAD_S, padx=(0, PAD_M))
+        self._name_entry = ctk.CTkEntry(content, font=FONT_SMALL)
+        self._name_entry.grid(row=1, column=1, sticky="ew", pady=PAD_S)
+
+        ctk.CTkButton(
+            content, text="Cambiar nombre", font=FONT_SMALL, command=self._apply,
+        ).grid(row=2, column=0, columnspan=2, sticky="ew", pady=(PAD_M, 0))
+
+    def _apply(self) -> None:
+        old = self._col_combo.get().strip()
+        new = self._name_entry.get().strip()
+        if old and new:
+            self._result = (old, new)
+            super()._on_confirm()
 
 
 # ── MainWindow ────────────────────────────────────────────────────────────────
@@ -352,7 +401,7 @@ class MainWindow:
         """
         self._sb_wrapper = ctk.CTkFrame(
             self._window, corner_radius=0,
-            fg_color=("gray88", "gray16"),
+            fg_color=SIDEBAR_BG,
         )
         self._sb_wrapper.rowconfigure(1, weight=1)
         self._sb_wrapper.columnconfigure(0, weight=1)
@@ -360,7 +409,7 @@ class MainWindow:
         # Toggle strip
         toggle_strip = ctk.CTkFrame(
             self._sb_wrapper, height=40, width=_SB_COLLAPSED, corner_radius=0,
-            fg_color=("gray82", "gray20"),
+            fg_color=SIDEBAR_TOGGLE_BG,
         )
         toggle_strip.grid(row=0, column=0, sticky="ew")
         toggle_strip.columnconfigure(0, weight=1)
@@ -440,8 +489,8 @@ class MainWindow:
 
         # Toolbar row
         dt_toolbar = ctk.CTkFrame(
-            self._dt_container, height=32, corner_radius=0,
-            fg_color=("gray83", "gray20"),
+            self._dt_container, height=SUBTOOLBAR_H, corner_radius=0,
+            fg_color=TOOLBAR_BG,
         )
         dt_toolbar.grid(row=0, column=0, sticky="ew")
         dt_toolbar.columnconfigure(1, weight=1)
@@ -465,8 +514,8 @@ class MainWindow:
             ctk.CTkButton(
                 dt_toolbar, text=lbl, width=64, height=24,
                 font=FONT_SMALL,
-                fg_color=("gray72", "gray32"),
-                hover_color=("gray60", "gray42"),
+                fg_color=CLR_BTN_SECONDARY,
+                hover_color=CLR_HOVER_SECONDARY,
                 command=cmd,
             ).grid(row=0, column=col_i, padx=PAD_XS, pady=PAD_XS)
 
@@ -561,44 +610,15 @@ class MainWindow:
             messagebox.showerror("Error", str(e))
 
     def _edit_column_dialog(self) -> None:
-        win = ctk.CTkToplevel(self._window)
-        win.title("Editar nombre de variable")
-        win.geometry("340x180")
-        win.resizable(False, False)
-        win.after(200, win.grab_set)
-
-        content = ctk.CTkFrame(win, fg_color="transparent")
-        content.pack(fill="both", expand=True, padx=PAD_L, pady=PAD_L)
-        content.columnconfigure(1, weight=1)
-
-        ctk.CTkLabel(content, text="Variable:", font=FONT_SMALL, anchor="w").grid(
-            row=0, column=0, sticky="w", pady=PAD_S, padx=(0, PAD_M))
-        col_combo = ctk.CTkComboBox(content, values=list(self._ctrl.columns),
-                                    state="readonly", font=FONT_SMALL)
-        if self._ctrl.columns:
-            col_combo.set(self._ctrl.columns[0])
-        col_combo.grid(row=0, column=1, sticky="ew", pady=PAD_S)
-
-        ctk.CTkLabel(content, text="Nuevo nombre:", font=FONT_SMALL, anchor="w").grid(
-            row=1, column=0, sticky="w", pady=PAD_S, padx=(0, PAD_M))
-        name_entry = ctk.CTkEntry(content, font=FONT_SMALL)
-        name_entry.grid(row=1, column=1, sticky="ew", pady=PAD_S)
-
-        def apply() -> None:
-            old = col_combo.get().strip()
-            new = name_entry.get().strip()
-            if not old or not new:
-                return
+        dlg = _EditColumnDialog(self._window, self._ctrl.columns)
+        result = dlg.get_result()
+        if result:
+            old, new = result
             try:
                 self._ctrl.rename_column(old, new)
                 self._refresh()
-                win.destroy()
             except ValueError as e:
                 messagebox.showerror("Error", str(e))
-
-        ctk.CTkButton(content, text="Cambiar nombre", font=FONT_SMALL,
-                      command=apply).grid(
-            row=2, column=0, columnspan=2, sticky="ew", pady=(PAD_M, 0))
 
     # ── Data actions ──────────────────────────────────────────────────────────
 
@@ -686,12 +706,17 @@ class MainWindow:
             messagebox.showerror("Error", str(e))
             return
 
+        width, height = 600, 620
         win = ctk.CTkToplevel(self._window)
         win.title("Medidas de Tendencia Central")
-        win.geometry("600x620")
+        win.resizable(True, True)
+        win.update_idletasks()
+        px = self._window.winfo_rootx() + max(0, (self._window.winfo_width() - width) // 2)
+        py = self._window.winfo_rooty() + max(0, (self._window.winfo_height() - height) // 2)
+        win.geometry(f"{width}x{height}+{px}+{py}")
         win.after(200, win.grab_set)
 
-        textbox = ctk.CTkTextbox(win, font=("Courier New", 11), wrap="word")
+        textbox = ctk.CTkTextbox(win, font=FONT_MONO, wrap="word")
         textbox.pack(fill="both", expand=True, padx=PAD_L, pady=PAD_L)
 
         lines = [

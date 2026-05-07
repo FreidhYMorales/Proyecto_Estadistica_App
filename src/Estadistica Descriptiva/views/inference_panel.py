@@ -16,13 +16,25 @@ renderizan un gráfico de la distribución con la región sombreada.
 from tkinter import messagebox
 import customtkinter as ctk
 
-from views.theme import FONT_SECTION, FONT_SMALL, PAD_XS, PAD_S, PAD_M, PAD_L
+from views.theme import (
+    FONT_SECTION, FONT_SMALL,
+    PAD_XS, PAD_S, PAD_M, PAD_L,
+    TOOLBAR_H, TOOLBAR_BG,
+    CLR_BTN_SECONDARY, CLR_HOVER_SECONDARY,
+    CLR_DIVIDER, CLR_PLACEHOLDER,
+)
 from views.components import clear_frame, CTkDropdown, ResultTextWidget, GraphCanvas, DataTreeview
 
 
-# Opciones de nivel de confianza
-_NC_OPTIONS = ["90%", "95%", "99%"]
-_NC_MAP = {"90%": 0.90, "95%": 0.95, "99%": 0.99}
+def _parse_nc(text: str) -> float:
+    """Convierte '95', '95%' o '0.95' a fracción (0, 1). Lanza ValueError si es inválido."""
+    s = text.strip().rstrip("%").strip()
+    v = float(s)
+    if v <= 0:
+        raise ValueError("El nivel de confianza debe ser mayor que 0.")
+    if v >= 100:
+        raise ValueError("El nivel de confianza debe ser menor que 100.")
+    return v / 100 if v >= 1 else v
 
 
 class InferencePanel:
@@ -39,7 +51,7 @@ class InferencePanel:
         self._root.columnconfigure(0, weight=1)
 
         self._toolbar = ctk.CTkFrame(
-            self._root, height=44, fg_color=("gray88", "gray18"), corner_radius=0
+            self._root, height=TOOLBAR_H, fg_color=TOOLBAR_BG, corner_radius=0
         )
         self._toolbar.grid(row=0, column=0, sticky="ew")
 
@@ -111,13 +123,22 @@ class InferencePanel:
             font=FONT_SMALL,
         ).pack(side="left", padx=PAD_S, pady=PAD_S)
 
+        CTkDropdown(
+            self._toolbar, "Estimación Puntual",
+            items=[
+                ("Proporciones — tabla n + IC", self._show_ep_proporciones),
+                ("Medias — tabla n + IC",        self._show_ep_medias),
+            ],
+            font=FONT_SMALL,
+        ).pack(side="left", padx=PAD_S, pady=PAD_S)
+
     # ── Layout helpers ────────────────────────────────────────────────────────
 
     def _make_text_panel(self, titulo: str):
         """Retorna (control_frame, ResultTextWidget)."""
         clear_frame(self._content)
-        self._content.rowconfigure(0, weight=0)
-        self._content.rowconfigure(1, weight=0)
+        for r in range(4):
+            self._content.rowconfigure(r, weight=0)
         self._content.rowconfigure(2, weight=1)
 
         ctk.CTkLabel(self._content, text=titulo, font=FONT_SECTION, anchor="w").grid(
@@ -205,15 +226,12 @@ class InferencePanel:
 
         return control, result, tree
 
-    def _nc_combo(self, parent) -> ctk.CTkComboBox:
-        ctk.CTkLabel(parent, text="Confianza:", font=FONT_SMALL).pack(side="left", padx=PAD_S)
-        combo = ctk.CTkComboBox(
-            parent, values=_NC_OPTIONS,
-            state="readonly", font=FONT_SMALL, width=80, height=28,
-        )
-        combo.set("95%")
-        combo.pack(side="left", padx=PAD_S)
-        return combo
+    def _nc_combo(self, parent) -> ctk.CTkEntry:
+        ctk.CTkLabel(parent, text="Confianza %:", font=FONT_SMALL).pack(side="left", padx=PAD_S)
+        entry = ctk.CTkEntry(parent, width=55, height=28, font=FONT_SMALL)
+        entry.insert(0, "95")
+        entry.pack(side="left", padx=PAD_S)
+        return entry
 
     def _labeled_entry(self, parent, label: str, default: str, width: int = 90) -> ctk.CTkEntry:
         ctk.CTkLabel(parent, text=label, font=FONT_SMALL).pack(side="left", padx=(PAD_M, PAD_S))
@@ -252,7 +270,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 metodo = "wilson" if "wilson" in met_combo.get() else "normal"
                 res = self._ctrl.ic_proporcion(int(exitos_e.get()), int(n_e.get()), nc, metodo)
                 result.set(_fmt_ic(res))
@@ -262,7 +280,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_proporcion.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -278,7 +296,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 res = self._ctrl.ic_media_z(
                     float(media_e.get()), float(sigma_e.get()), int(n_e.get()), nc
                 )
@@ -287,7 +305,7 @@ class InferencePanel:
                 import utils.inference_graphs as ig
                 fig, _ = ig.build_normal_dist_ic(
                     res["media_muestral"], res["error_estandar"],
-                    res["z"], nc_combo.get(),
+                    res["z"], f"{nc*100:.4g}%",
                     "Distribución Normal — IC para Media"
                 )
                 graph.render(fig)
@@ -297,7 +315,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_media_z.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -312,7 +330,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 datos = self._ctrl.get_numeric_column(col_combo.get())
                 if not datos:
                     messagebox.showerror("Error", "No hay datos numéricos en esa columna.")
@@ -322,7 +340,7 @@ class InferencePanel:
                 import utils.inference_graphs as ig
                 fig, _ = ig.build_normal_dist_ic(
                     res["media_muestral"], res["error_estandar"],
-                    res["t_critico"], nc_combo.get(),
+                    res["t_critico"], f"{nc*100:.4g}%",
                     f"Distribución t-Student — IC para Media ({col_combo.get()})"
                 )
                 graph.render(fig)
@@ -332,7 +350,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_media_t.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -349,7 +367,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 res = self._ctrl.ic_media_t_manual(
                     float(media_e.get()), float(s_e.get()), int(n_e.get()), nc
                 )
@@ -357,7 +375,7 @@ class InferencePanel:
                 import utils.inference_graphs as ig
                 fig, _ = ig.build_normal_dist_ic(
                     res["media_muestral"], res["error_estandar"],
-                    res["t_critico"], nc_combo.get(),
+                    res["t_critico"], f"{nc*100:.4g}%",
                     "Distribución t-Student — IC para Media"
                 )
                 graph.render(fig)
@@ -367,7 +385,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_media_t_manual.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -382,7 +400,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 datos = self._ctrl.get_numeric_column(col_combo.get())
                 if not datos:
                     messagebox.showerror("Error", "No hay datos numéricos en esa columna.")
@@ -395,7 +413,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_varianza_datos.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -411,7 +429,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 res = self._ctrl.ic_varianza(
                     nc,
                     desv_muestral=float(s_entry.get()),
@@ -424,7 +442,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_varianza_manual.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -442,7 +460,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 N_txt = n_entry.get().strip()
                 if not N_txt:
                     messagebox.showerror("Error", "Ingrese el tamaño de la población N.")
@@ -460,7 +478,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular y Muestrear", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar resultado", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestra_prop_con_n.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -477,7 +495,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 pe_txt = pe_entry.get().strip()
                 res = self._ctrl.sample_size_proportion(
                     float(e_entry.get()), float(p_entry.get()), nc,
@@ -490,7 +508,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestra_prop_sin_n.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -508,7 +526,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 N_txt = n_entry.get().strip()
                 if not N_txt:
                     messagebox.showerror("Error", "Ingrese el tamaño de la población N.")
@@ -526,7 +544,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular y Muestrear", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar resultado", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestra_media_con_n.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -543,7 +561,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 pe_txt = pe_entry.get().strip()
                 res = self._ctrl.sample_size_mean(
                     float(e_entry.get()), float(s_entry.get()), nc,
@@ -556,7 +574,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestra_media_sin_n.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -580,7 +598,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 metodo = "wilson" if "wilson" in met_combo.get() else "normal"
                 res = self._ctrl.ic_proporcion_directa(
                     float(p_e.get()), int(n_e.get()), nc, metodo
@@ -592,7 +610,7 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_proporcion_p.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -644,7 +662,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 res = self._ctrl.ic_dos_medias_caso1(
                     int(ea[0].get()), float(ea[1].get()), float(ea[2].get()),
                     int(eb[0].get()), float(eb[1].get()), float(eb[2].get()),
@@ -657,7 +675,7 @@ class InferencePanel:
         ctk.CTkButton(btn_row, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(btn_row, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_2m_caso1.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -675,7 +693,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 res = self._ctrl.ic_dos_medias_caso2(
                     int(ea[0].get()), float(ea[1].get()), float(ea[2].get()),
                     int(eb[0].get()), float(eb[1].get()), float(eb[2].get()),
@@ -688,7 +706,7 @@ class InferencePanel:
         ctk.CTkButton(btn_row, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(btn_row, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_2m_caso2.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -706,7 +724,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 res = self._ctrl.ic_dos_medias_caso3(
                     int(ea[0].get()), float(ea[1].get()), float(ea[2].get()),
                     int(eb[0].get()), float(eb[1].get()), float(eb[2].get()),
@@ -719,7 +737,7 @@ class InferencePanel:
         ctk.CTkButton(btn_row, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(btn_row, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_2m_caso3.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -737,7 +755,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 res = self._ctrl.ic_dos_medias_caso4(
                     int(ea[0].get()), float(ea[1].get()), float(ea[2].get()),
                     int(eb[0].get()), float(eb[1].get()), float(eb[2].get()),
@@ -750,7 +768,7 @@ class InferencePanel:
         ctk.CTkButton(btn_row, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(btn_row, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_2m_caso4.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -767,7 +785,7 @@ class InferencePanel:
 
         def calcular():
             try:
-                nc = _NC_MAP[nc_combo.get()]
+                nc = _parse_nc(nc_combo.get())
                 res = self._ctrl.ic_dos_medias_pareadas(
                     int(n_e.get()), float(dbar_e.get()), float(sd_e.get()), nc
                 )
@@ -778,8 +796,173 @@ class InferencePanel:
         ctk.CTkButton(control, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("ic_2m_pareadas.txt")).pack(
+            side="left", padx=PAD_S)
+
+
+    # ── Estimación Puntual — layout helper ───────────────────────────────────
+
+    def _make_ep_panel(self, titulo: str):
+        """Returns (ctrl_tabla, DataTreeview, ctrl_ic, ResultTextWidget).
+        Layout: title → table params → expandable n-table → divider → IC params → IC result."""
+        clear_frame(self._content)
+        for r in range(7):
+            self._content.rowconfigure(r, weight=0)
+        self._content.rowconfigure(2, weight=2)
+        self._content.rowconfigure(6, weight=1)
+        self._content.columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(self._content, text=titulo, font=FONT_SECTION, anchor="w").grid(
+            row=0, column=0, sticky="w", padx=PAD_L, pady=(PAD_M, 0))
+
+        ctrl_tabla = ctk.CTkFrame(self._content, fg_color="transparent")
+        ctrl_tabla.grid(row=1, column=0, sticky="ew", padx=PAD_M, pady=(PAD_S, 0))
+
+        table_outer = ctk.CTkFrame(self._content, fg_color="transparent")
+        table_outer.grid(row=2, column=0, sticky="nsew", padx=PAD_M, pady=PAD_S)
+        table_outer.rowconfigure(0, weight=1)
+        table_outer.columnconfigure(0, weight=1)
+        tree = DataTreeview(table_outer)
+
+        ctk.CTkFrame(self._content, height=1, fg_color=CLR_DIVIDER).grid(
+            row=3, column=0, sticky="ew", padx=PAD_L, pady=(0, PAD_XS))
+        ctk.CTkLabel(
+            self._content,
+            text="Desde la muestra observada — calcular intervalo de confianza:",
+            font=FONT_SMALL, anchor="w", text_color=CLR_PLACEHOLDER,
+        ).grid(row=4, column=0, sticky="w", padx=PAD_L, pady=(0, PAD_XS))
+
+        ctrl_ic = ctk.CTkFrame(self._content, fg_color="transparent")
+        ctrl_ic.grid(row=5, column=0, sticky="ew", padx=PAD_M, pady=(0, PAD_S))
+
+        result_outer = ctk.CTkFrame(self._content, fg_color="transparent")
+        result_outer.grid(row=6, column=0, sticky="nsew")
+        result_outer.rowconfigure(0, weight=1)
+        result_outer.columnconfigure(0, weight=1)
+        result = ResultTextWidget(result_outer, font=("Courier", 11))
+
+        return ctrl_tabla, tree, ctrl_ic, result
+
+    # ── Estimación Puntual — Proporciones ─────────────────────────────────────
+
+    def _show_ep_proporciones(self) -> None:
+        ctrl_tabla, tree, ctrl_ic, result = self._make_ep_panel(
+            "Estimación Puntual — Proporciones")
+
+        nc_t = self._nc_combo(ctrl_tabla)
+        n_t  = self._labeled_entry(ctrl_tabla, "N (opcional):", "", width=100)
+        d_t  = self._labeled_entry(ctrl_tabla, "Error máx. d:", "0.03")
+
+        def generar():
+            try:
+                nc    = _parse_nc(nc_t.get())
+                N_txt = n_t.get().strip()
+                N_val = int(N_txt) if N_txt else None
+                d     = float(d_t.get())
+                rows  = []
+                for i in range(1, 10):
+                    p   = round(i * 0.1, 1)
+                    res = self._ctrl.sample_size_proportion(d, p, nc, N_val)
+                    row = {
+                        "p": p,
+                        "q (1−p)": round(1 - p, 1),
+                        "n (pob. infinita)": res["n_poblacion_infinita"],
+                    }
+                    if N_val is not None:
+                        row["n ajustada (con N)"] = res.get("n_ajustada_finita", "—")
+                    rows.append(row)
+                import pandas as pd
+                tree.load(pd.DataFrame(rows))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(ctrl_tabla, text="Generar Tabla", font=FONT_SMALL, height=28,
+                      command=generar).pack(side="left", padx=PAD_M)
+
+        nc_ic   = self._nc_combo(ctrl_ic)
+        p_hat_e = self._labeled_entry(ctrl_ic, "p̂ observado (0–1):", "0.28", width=80)
+        n_ic_e  = self._labeled_entry(ctrl_ic, "n muestra:", "200")
+        ctk.CTkLabel(ctrl_ic, text="Método:", font=FONT_SMALL).pack(side="left", padx=PAD_S)
+        met = ctk.CTkComboBox(ctrl_ic, values=["normal (Wald)", "wilson"],
+                              state="readonly", font=FONT_SMALL, width=130, height=28)
+        met.set("normal (Wald)")
+        met.pack(side="left", padx=PAD_S)
+
+        def calcular_ic():
+            try:
+                nc     = _parse_nc(nc_ic.get())
+                metodo = "wilson" if "wilson" in met.get() else "normal"
+                res    = self._ctrl.ic_proporcion_directa(
+                    float(p_hat_e.get()), int(n_ic_e.get()), nc, metodo)
+                result.set(_fmt_ic_prop_directa(res))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(ctrl_ic, text="Calcular IC", font=FONT_SMALL, height=28,
+                      command=calcular_ic).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(ctrl_ic, text="Exportar", font=FONT_SMALL, height=28,
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
+                      command=lambda: result.export("ep_proporcion_ic.txt")).pack(
+            side="left", padx=PAD_S)
+
+    # ── Estimación Puntual — Medias ───────────────────────────────────────────
+
+    def _show_ep_medias(self) -> None:
+        ctrl_tabla, tree, ctrl_ic, result = self._make_ep_panel(
+            "Estimación Puntual — Medias")
+
+        nc_t    = self._nc_combo(ctrl_tabla)
+        n_t     = self._labeled_entry(ctrl_tabla, "N (opcional):", "", width=100)
+        d_t     = self._labeled_entry(ctrl_tabla, "Error máx. d:", "50")
+        sigma_t = self._labeled_entry(ctrl_tabla, "σ referencia:", "100")
+
+        def generar():
+            try:
+                nc     = _parse_nc(nc_t.get())
+                N_txt  = n_t.get().strip()
+                N_val  = int(N_txt) if N_txt else None
+                d      = float(d_t.get())
+                s_base = float(sigma_t.get())
+                factors = [0.1, 0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0]
+                rows = []
+                for f in factors:
+                    s_val = round(s_base * f, 4)
+                    res   = self._ctrl.sample_size_mean(d, s_val, nc, N_val)
+                    row   = {
+                        "σ": s_val,
+                        "n (pob. infinita)": res["n_poblacion_infinita"],
+                    }
+                    if N_val is not None:
+                        row["n ajustada (con N)"] = res.get("n_ajustada_finita", "—")
+                    rows.append(row)
+                import pandas as pd
+                tree.load(pd.DataFrame(rows))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(ctrl_tabla, text="Generar Tabla", font=FONT_SMALL, height=28,
+                      command=generar).pack(side="left", padx=PAD_M)
+
+        nc_ic   = self._nc_combo(ctrl_ic)
+        x_bar_e = self._labeled_entry(ctrl_ic, "x̄ observado:", "3200", width=100)
+        s_ic_e  = self._labeled_entry(ctrl_ic, "s muestral:", "500")
+        n_ic_e  = self._labeled_entry(ctrl_ic, "n muestra:", "379")
+
+        def calcular_ic():
+            try:
+                nc  = _parse_nc(nc_ic.get())
+                res = self._ctrl.ic_media_t_manual(
+                    float(x_bar_e.get()), float(s_ic_e.get()), int(n_ic_e.get()), nc)
+                result.set(_fmt_ic(res))
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
+
+        ctk.CTkButton(ctrl_ic, text="Calcular IC", font=FONT_SMALL, height=28,
+                      command=calcular_ic).pack(side="left", padx=PAD_M)
+        ctk.CTkButton(ctrl_ic, text="Exportar", font=FONT_SMALL, height=28,
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
+                      command=lambda: result.export("ep_media_ic.txt")).pack(
             side="left", padx=PAD_S)
 
 
@@ -831,7 +1014,13 @@ def _fmt_ic(r: dict) -> str:
     if tipo == "proporción":
         lineas += [
             f"  Éxitos              : {r['exitos']}",
-            f"  p̂                   : {r['p_hat']}",
+            f"  p̂                   : {r['p_hat'] * 100:.4f}%",
+            f"  Error estándar      : {r['error_estandar']}",
+            f"  Margen de error     : ±{r['margen_error'] * 100:.4f}%",
+            "",
+            "  ┌──────────────────────────────────────────────┐",
+            f"  │  IC: [ {r['limite_inferior'] * 100:.4f}%  ,  {r['limite_superior'] * 100:.4f}% ]  │",
+            "  └──────────────────────────────────────────────┘",
         ]
     else:
         lineas.append(f"  Media muestral (x̄)  : {r['media_muestral']}")
@@ -841,15 +1030,14 @@ def _fmt_ic(r: dict) -> str:
             lineas.append(f"  s (muestral)        : {r['desv_estandar_muestral']}")
         if "grados_libertad" in r:
             lineas.append(f"  Grados de libertad  : {r['grados_libertad']}")
-
-    lineas += [
-        f"  Error estándar      : {r['error_estandar']}",
-        f"  Margen de error     : ±{r['margen_error']}",
-        "",
-        "  ┌──────────────────────────────────────────────┐",
-        f"  │  IC: [ {r['limite_inferior']:.6f}  ,  {r['limite_superior']:.6f} ]  │",
-        "  └──────────────────────────────────────────────┘",
-    ]
+        lineas += [
+            f"  Error estándar      : {r['error_estandar']}",
+            f"  Margen de error     : ±{r['margen_error']}",
+            "",
+            "  ┌──────────────────────────────────────────────┐",
+            f"  │  IC: [ {r['limite_inferior']:.6f}  ,  {r['limite_superior']:.6f} ]  │",
+            "  └──────────────────────────────────────────────┘",
+        ]
 
     if r.get("advertencia"):
         lineas += ["", f"  {r['advertencia']}"]
@@ -942,15 +1130,15 @@ def _fmt_ic_prop_directa(r: dict) -> str:
         f"  Método              : {r['metodo']}",
         f"  Z crítico (Zα/2)    : {r['z']}",
         f"  Tamaño muestra (n)  : {r['n']}",
-        f"  Proporción (p)      : {r['p']}",
-        f"  q = 1 − p           : {r['q']}",
+        f"  Proporción (p)      : {r['p'] * 100:.4f}%",
+        f"  q = 1 − p           : {r['q'] * 100:.4f}%",
         f"  p × q               : {r['p_por_q']}",
         f"  p × q / n           : {r['p_por_q_div_n']}",
         f"  Error estándar SE   : {r['error_estandar']}",
-        f"  Margen de error E   : ±{r['margen_error']}",
+        f"  Margen de error E   : ±{r['margen_error'] * 100:.4f}%",
         "",
         "  ┌──────────────────────────────────────────────┐",
-        f"  │  IC: [ {r['limite_inferior']:.6f}  ,  {r['limite_superior']:.6f} ]  │",
+        f"  │  IC: [ {r['limite_inferior'] * 100:.4f}%  ,  {r['limite_superior'] * 100:.4f}% ]  │",
         "  └──────────────────────────────────────────────┘",
     ]
     if r.get("advertencia"):

@@ -28,6 +28,7 @@ from views.theme import (
     FONT_SECTION, FONT_NORMAL, FONT_SMALL,
     PAD_XS, PAD_S, PAD_M, PAD_L,
     apply_treeview_dark_style, COLOR_TREEVIEW_BG,
+    CLR_BTN_SECONDARY, CLR_HOVER_SECONDARY, CLR_PLACEHOLDER,
 )
 
 
@@ -93,7 +94,7 @@ class DatasetImportDialog(BaseDialog):
         self._placeholder = ctk.CTkLabel(
             preview_outer,
             text="Selecciona un archivo para previsualizar los datos",
-            font=FONT_NORMAL, text_color=("gray45", "gray60"),
+            font=FONT_NORMAL, text_color=CLR_PLACEHOLDER,
         )
         self._placeholder.grid(row=0, column=0)
 
@@ -109,7 +110,7 @@ class DatasetImportDialog(BaseDialog):
 
         self._info_lbl = ctk.CTkLabel(
             bottom, text="", font=FONT_SMALL,
-            text_color=("gray40", "gray60"), anchor="w",
+            text_color=CLR_PLACEHOLDER, anchor="w",
         )
         self._info_lbl.grid(row=0, column=0, sticky="w")
 
@@ -118,8 +119,8 @@ class DatasetImportDialog(BaseDialog):
 
         ctk.CTkButton(
             btn_frame, text="Cancelar", width=100,
-            fg_color=("gray72", "gray32"),
-            hover_color=("gray60", "gray42"),
+            fg_color=CLR_BTN_SECONDARY,
+            hover_color=CLR_HOVER_SECONDARY,
             command=self._on_cancel,
         ).pack(side="left", padx=PAD_S)
 
@@ -178,7 +179,7 @@ class DatasetImportDialog(BaseDialog):
             self._render_preview(df)
             self._info_lbl.configure(
                 text=f"{len(df.columns)} columnas · {len(df)} filas (vista previa de primeras 50 filas)",
-                text_color=("gray40", "gray60"),
+                text_color=CLR_PLACEHOLDER,
             )
             self._confirm_btn.configure(state="normal")
         except Exception as e:
@@ -221,9 +222,13 @@ class DatasetImportDialog(BaseDialog):
 
         tree["columns"] = list(df.columns)
         tree["show"] = "headings"
+        char_px = 8
         for col in df.columns:
+            col_vals = df[col].astype(str)
+            max_chars = max(len(str(col)), col_vals.str.len().max() if len(col_vals) else 0)
+            col_w = max(60, min(int(max_chars * char_px) + 16, 240))
             tree.heading(col, text=str(col))
-            tree.column(col, anchor="center", width=90, minwidth=60)
+            tree.column(col, anchor="center", width=col_w, minwidth=60)
         for _, row in df.iterrows():
             tree.insert("", "end", values=list(row))
 

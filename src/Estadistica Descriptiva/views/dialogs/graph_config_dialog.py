@@ -19,7 +19,10 @@ from dataclasses import dataclass, field
 import customtkinter as ctk
 
 from views.dialogs.base_dialog import BaseDialog
-from views.theme import FONT_NORMAL, FONT_SMALL, PAD_XS, PAD_S, PAD_M, PAD_L
+from views.theme import (
+    FONT_NORMAL, FONT_SMALL, PAD_XS, PAD_S, PAD_M, PAD_L,
+    CLR_BTN_SECONDARY, CLR_HOVER_SECONDARY, CLR_DIVIDER,
+)
 
 
 @dataclass
@@ -95,7 +98,7 @@ class GraphConfigDialog(BaseDialog):
         row += 1
 
         # Separator
-        ctk.CTkFrame(self, height=1, fg_color=("gray70", "gray35")).grid(
+        ctk.CTkFrame(self, height=1, fg_color=CLR_DIVIDER).grid(
             row=row, column=0, columnspan=2, sticky="ew",
             padx=PAD_L, pady=(PAD_S, 0))
         row += 1
@@ -107,8 +110,8 @@ class GraphConfigDialog(BaseDialog):
 
         ctk.CTkButton(
             btn_frame, text="Cancelar", width=100,
-            fg_color=("gray72", "gray32"),
-            hover_color=("gray60", "gray42"),
+            fg_color=CLR_BTN_SECONDARY,
+            hover_color=CLR_HOVER_SECONDARY,
             command=self._on_cancel,
         ).pack(side="left", padx=PAD_S)
 

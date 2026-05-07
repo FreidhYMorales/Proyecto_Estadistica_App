@@ -2,8 +2,12 @@ import tkinter as tk
 from tkinter import messagebox
 import customtkinter as ctk
 
-from views.theme import FONT_SMALL, PAD_S, PAD_M
+from views.theme import (
+    FONT_SMALL, PAD_S, PAD_M, TOOLBAR_H, TOOLBAR_BG,
+    CLR_BTN_SECONDARY, CLR_HOVER_SECONDARY, CLR_INPUT_BG,
+)
 from views.components import clear_frame, GraphCanvas, CTkDropdown
+from views.dialogs.graph_config_dialog import GraphConfigDialog, GraphConfig
 import utils.graphs as graph_utils
 
 
@@ -12,6 +16,7 @@ class GraphsPanel:
 
     def __init__(self, parent: ctk.CTkFrame, controller):
         self._ctrl = controller
+        self._cfg  = GraphConfig()
 
         self._root = ctk.CTkFrame(parent, fg_color="transparent")
         self._root.grid(row=0, column=0, sticky="nsew")
@@ -20,7 +25,7 @@ class GraphsPanel:
         self._root.rowconfigure(1, weight=1)
         self._root.columnconfigure(0, weight=1)
 
-        self._toolbar = ctk.CTkFrame(self._root, height=44, fg_color=("gray88", "gray18"),
+        self._toolbar = ctk.CTkFrame(self._root, height=TOOLBAR_H, fg_color=TOOLBAR_BG,
                                      corner_radius=0)
         self._toolbar.grid(row=0, column=0, sticky="ew")
 
@@ -68,7 +73,7 @@ class GraphsPanel:
         self._content.rowconfigure(0, weight=0)
         self._content.rowconfigure(1, weight=1)
 
-        control = ctk.CTkFrame(self._content, fg_color="transparent", height=44)
+        control = ctk.CTkFrame(self._content, fg_color="transparent")
         control.grid(row=0, column=0, sticky="ew", padx=PAD_M, pady=PAD_S)
         return control
 
@@ -88,17 +93,27 @@ class GraphsPanel:
         frame.columnconfigure(0, weight=1)
         return frame
 
+    def _config_btn(self, parent, show_bins: bool = True) -> None:
+        """Adds a ⚙ Configurar button that opens GraphConfigDialog."""
+        def abrir():
+            dlg = GraphConfigDialog(
+                self._root.winfo_toplevel(), self._cfg, show_bins=show_bins,
+            )
+            result = dlg.get_result()
+            if result:
+                self._cfg = result
+
+        ctk.CTkButton(
+            parent, text="⚙ Configurar", font=FONT_SMALL, height=28,
+            fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
+            command=abrir,
+        ).pack(side="left", padx=PAD_S)
+
     # ── Frequency charts ──────────────────────────────────────────────────────
 
     def _show_histogram(self) -> None:
         control = self._make_panel()
         combo = self._column_combo(control)
-
-        ctk.CTkLabel(control, text="Bins:", font=FONT_SMALL).pack(side="left", padx=(PAD_M, PAD_S))
-        bins_entry = ctk.CTkEntry(control, width=60, height=28, font=FONT_SMALL)
-        bins_entry.insert(0, "10")
-        bins_entry.pack(side="left", padx=PAD_S)
-
         canvas_widget = GraphCanvas(self._graph_container())
 
         def generar():
@@ -107,25 +122,23 @@ class GraphsPanel:
                 if not data:
                     messagebox.showerror("Error", "No hay datos numéricos disponibles.")
                     return
-                fig, _ = graph_utils.build_histogram(data, int(bins_entry.get()), combo.get())
+                fig, _ = graph_utils.build_histogram(
+                    data, self._cfg.bins, combo.get(),
+                    title=self._cfg.title, color=self._cfg.color,
+                    show_grid=self._cfg.show_grid,
+                    xlabel=self._cfg.xlabel, ylabel=self._cfg.ylabel,
+                )
                 canvas_widget.render(fig)
-            except ValueError:
-                messagebox.showerror("Error", "Número de bins inválido.")
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
+        self._config_btn(control, show_bins=True)
         ctk.CTkButton(control, text="Generar Histograma", font=FONT_SMALL, height=28,
                       command=generar).pack(side="left", padx=PAD_M)
 
     def _show_polygon(self) -> None:
         control = self._make_panel()
         combo = self._column_combo(control)
-
-        ctk.CTkLabel(control, text="Bins:", font=FONT_SMALL).pack(side="left", padx=(PAD_M, PAD_S))
-        bins_entry = ctk.CTkEntry(control, width=60, height=28, font=FONT_SMALL)
-        bins_entry.insert(0, "10")
-        bins_entry.pack(side="left", padx=PAD_S)
-
         canvas_widget = GraphCanvas(self._graph_container())
 
         def generar():
@@ -135,13 +148,16 @@ class GraphsPanel:
                     messagebox.showerror("Error", "No hay datos numéricos disponibles.")
                     return
                 fig, _ = graph_utils.build_frequency_polygon(
-                    data, int(bins_entry.get()), combo.get())
+                    data, self._cfg.bins, combo.get(),
+                    title=self._cfg.title, color=self._cfg.color,
+                    show_grid=self._cfg.show_grid,
+                    xlabel=self._cfg.xlabel, ylabel=self._cfg.ylabel,
+                )
                 canvas_widget.render(fig)
-            except ValueError:
-                messagebox.showerror("Error", "Número de bins inválido.")
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
+        self._config_btn(control, show_bins=True)
         ctk.CTkButton(control, text="Generar Polígono", font=FONT_SMALL, height=28,
                       command=generar).pack(side="left", padx=PAD_M)
 
@@ -164,11 +180,16 @@ class GraphsPanel:
                     messagebox.showerror("Error", "No hay datos numéricos disponibles.")
                     return
                 fig, _ = graph_utils.build_ogive(
-                    data, tipo_combo.get() == "Ascendente", combo.get())
+                    data, tipo_combo.get() == "Ascendente", combo.get(),
+                    title=self._cfg.title, color=self._cfg.color,
+                    show_grid=self._cfg.show_grid,
+                    xlabel=self._cfg.xlabel, ylabel=self._cfg.ylabel,
+                )
                 canvas_widget.render(fig)
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
+        self._config_btn(control, show_bins=False)
         ctk.CTkButton(control, text="Generar Ojiva", font=FONT_SMALL, height=28,
                       command=generar).pack(side="left", padx=PAD_M)
 
@@ -189,11 +210,17 @@ class GraphsPanel:
                     messagebox.showwarning(
                         "Advertencia",
                         "Demasiadas categorías (>50). El gráfico puede no ser legible.")
-                fig, _ = graph_utils.build_bar_chart(data, combo.get())
+                fig, _ = graph_utils.build_bar_chart(
+                    data, combo.get(),
+                    title=self._cfg.title, color=self._cfg.color,
+                    show_grid=self._cfg.show_grid,
+                    xlabel=self._cfg.xlabel, ylabel=self._cfg.ylabel,
+                )
                 canvas_widget.render(fig)
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
+        self._config_btn(control, show_bins=False)
         ctk.CTkButton(control, text="Generar Gráfico de Barras", font=FONT_SMALL, height=28,
                       command=generar).pack(side="left", padx=PAD_M)
 
@@ -214,13 +241,17 @@ class GraphsPanel:
                 if not data:
                     messagebox.showerror("Error", "No hay datos disponibles.")
                     return
-                fig, _ = graph_utils.build_pie_chart(data, int(max_entry.get()), combo.get())
+                fig, _ = graph_utils.build_pie_chart(
+                    data, int(max_entry.get()), combo.get(),
+                    title=self._cfg.title, show_grid=self._cfg.show_grid,
+                )
                 canvas_widget.render(fig)
             except ValueError:
                 messagebox.showerror("Error", "Número máximo de categorías inválido.")
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
+        self._config_btn(control, show_bins=False)
         ctk.CTkButton(control, text="Generar Gráfico Circular", font=FONT_SMALL, height=28,
                       command=generar).pack(side="left", padx=PAD_M)
 
@@ -231,9 +262,8 @@ class GraphsPanel:
         ctk.CTkLabel(control, text="Variable(s):", font=FONT_SMALL).pack(
             side="left", padx=PAD_S)
 
-        # CTkScrollableFrame as multi-select listbox replacement
         lb_wrap = ctk.CTkScrollableFrame(control, width=200, height=80,
-                                         fg_color=("gray80", "gray25"), corner_radius=4)
+                                         fg_color=CLR_INPUT_BG, corner_radius=4)
         lb_wrap.pack(side="left", padx=PAD_S)
 
         check_vars: dict[str, ctk.BooleanVar] = {}
@@ -260,11 +290,17 @@ class GraphsPanel:
                 if not groups:
                     messagebox.showerror("Error", "No hay datos numéricos disponibles.")
                     return
-                fig, _ = graph_utils.build_boxplot(groups, labels)
+                fig, _ = graph_utils.build_boxplot(
+                    groups, labels,
+                    title=self._cfg.title, color=self._cfg.color,
+                    show_grid=self._cfg.show_grid,
+                    xlabel=self._cfg.xlabel, ylabel=self._cfg.ylabel,
+                )
                 canvas_widget.render(fig)
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
+        self._config_btn(control, show_bins=False)
         ctk.CTkButton(control, text="Generar Diagrama de Caja", font=FONT_SMALL, height=28,
                       command=generar).pack(side="left", padx=PAD_M)
 
@@ -286,10 +322,15 @@ class GraphsPanel:
                     return
                 n = min(len(x_data), len(y_data))
                 fig, _ = graph_utils.build_scatter(
-                    x_data[:n], y_data[:n], combo_x.get(), combo_y.get())
+                    x_data[:n], y_data[:n], combo_x.get(), combo_y.get(),
+                    title=self._cfg.title, color=self._cfg.color,
+                    show_grid=self._cfg.show_grid,
+                    xlabel=self._cfg.xlabel, ylabel=self._cfg.ylabel,
+                )
                 canvas_widget.render(fig)
             except Exception as e:
                 messagebox.showerror("Error", str(e))
 
+        self._config_btn(control, show_bins=False)
         ctk.CTkButton(control, text="Generar Diagrama", font=FONT_SMALL, height=28,
                       command=generar).pack(side="left", padx=PAD_M)

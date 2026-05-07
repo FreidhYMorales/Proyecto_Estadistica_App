@@ -2,7 +2,12 @@ import tkinter as tk
 from tkinter import messagebox
 import customtkinter as ctk
 
-from views.theme import FONT_SECTION, FONT_NORMAL, FONT_SMALL, FONT_MONO_SM, PAD_S, PAD_M, PAD_L
+from views.theme import (
+    FONT_SECTION, FONT_NORMAL, FONT_SMALL, FONT_MONO_SM,
+    PAD_S, PAD_M, PAD_L,
+    TOOLBAR_H, TOOLBAR_BG,
+    CLR_BTN_SECONDARY, CLR_INPUT_BG,
+)
 from views.components import clear_frame, GraphCanvas, ResultTextWidget, CTkDropdown
 import utils.regression as reg_utils
 import utils.graphs as graph_utils
@@ -21,7 +26,7 @@ class RegressionPanel:
         self._root.rowconfigure(1, weight=1)
         self._root.columnconfigure(0, weight=1)
 
-        self._toolbar = ctk.CTkFrame(self._root, height=44, fg_color=("gray88", "gray18"),
+        self._toolbar = ctk.CTkFrame(self._root, height=TOOLBAR_H, fg_color=TOOLBAR_BG,
                                      corner_radius=0)
         self._toolbar.grid(row=0, column=0, sticky="ew")
 
@@ -118,7 +123,7 @@ class RegressionPanel:
         ctk.CTkButton(ctrl, text="Calcular Correlación", font=FONT_SMALL, height=28,
                       command=calcular).grid(row=0, column=4, padx=PAD_M, pady=PAD_S)
         ctk.CTkButton(ctrl, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray65", "gray35"),
+                      fg_color=CLR_BTN_SECONDARY,
                       command=lambda: result_widget.export("correlacion.txt")).grid(
             row=0, column=5, padx=PAD_S, pady=PAD_S)
 
@@ -203,7 +208,7 @@ class RegressionPanel:
         ctk.CTkButton(ctrl, text="Calcular Regresión Lineal", font=FONT_SMALL, height=28,
                       command=calcular).grid(row=0, column=4, padx=PAD_M, pady=PAD_S)
         ctk.CTkButton(ctrl, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray65", "gray35"),
+                      fg_color=CLR_BTN_SECONDARY,
                       command=lambda: result_widget.export("regresion_lineal.txt")).grid(
             row=0, column=5, padx=PAD_S, pady=PAD_S)
 
@@ -279,7 +284,7 @@ class RegressionPanel:
         ctk.CTkButton(ctrl, text="Calcular", font=FONT_SMALL, height=28,
                       command=calcular).grid(row=0, column=6, padx=PAD_M, pady=PAD_S)
         ctk.CTkButton(ctrl, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray65", "gray35"),
+                      fg_color=CLR_BTN_SECONDARY,
                       command=lambda: result_widget.export("regresion_no_lineal.txt")).grid(
             row=0, column=7, padx=PAD_S, pady=PAD_S)
 
@@ -316,7 +321,7 @@ class RegressionPanel:
                      font=FONT_SMALL).grid(
             row=0, column=0, sticky="w", padx=PAD_M, pady=(PAD_M, PAD_S))
 
-        lb_scroll = ctk.CTkScrollableFrame(left, fg_color=("gray80", "gray22"),
+        lb_scroll = ctk.CTkScrollableFrame(left, fg_color=CLR_INPUT_BG,
                                            corner_radius=4)
         lb_scroll.grid(row=1, column=0, sticky="nsew", padx=PAD_M, pady=PAD_S)
 
@@ -365,7 +370,7 @@ class RegressionPanel:
                       command=calcular).grid(
             row=2, column=0, sticky="ew", padx=PAD_M, pady=PAD_S)
         ctk.CTkButton(left, text="Exportar resultados", font=FONT_SMALL, height=28,
-                      fg_color=("gray65", "gray35"),
+                      fg_color=CLR_BTN_SECONDARY,
                       command=lambda: result_widget.export("regresion_multiple.txt")).grid(
             row=3, column=0, sticky="ew", padx=PAD_M, pady=(0, PAD_M))
 

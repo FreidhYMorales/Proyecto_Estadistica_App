@@ -6,6 +6,8 @@ import customtkinter as ctk
 from views.theme import (
     FONT_SECTION, FONT_NORMAL, FONT_SMALL,
     PAD_XS, PAD_S, PAD_M, PAD_L,
+    TOOLBAR_H, TOOLBAR_BG,
+    CLR_BTN_SECONDARY,
     COLOR_CANVAS_BG,
 )
 from views.components import CTkDropdown, ScrollableCanvas
@@ -25,7 +27,7 @@ class ProbabilityPanel:
         self._root.rowconfigure(1, weight=1)
         self._root.columnconfigure(0, weight=1)
 
-        self._toolbar = ctk.CTkFrame(self._root, height=44, fg_color=("gray88", "gray18"),
+        self._toolbar = ctk.CTkFrame(self._root, height=TOOLBAR_H, fg_color=TOOLBAR_BG,
                                      corner_radius=0)
         self._toolbar.grid(row=0, column=0, sticky="ew")
 
@@ -143,7 +145,7 @@ class ProbabilityPanel:
         btn_row.grid(row=3, column=0, sticky="ew", padx=PAD_L, pady=PAD_S)
 
         ctk.CTkButton(btn_row, text="Agregar Muestra", font=FONT_SMALL, height=28,
-                      fg_color=("gray65", "gray35"),
+                      fg_color=CLR_BTN_SECONDARY,
                       command=add_sample).pack(side="left", padx=PAD_S)
 
         state["btn_row"] = btn_row
@@ -164,6 +166,7 @@ class ProbabilityPanel:
 
     def _show_simple(self) -> None:
         card = self._make_card("Sucesos Simples")
+        card.rowconfigure(1, weight=0)
         card.rowconfigure(2, weight=1)
         state = self._build_sample_space(card)
 

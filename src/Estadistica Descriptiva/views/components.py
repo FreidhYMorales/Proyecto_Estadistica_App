@@ -18,7 +18,10 @@ from views.theme import (
     FONT_NORMAL, FONT_SMALL, FONT_MONO,
     PAD_S, PAD_M,
     apply_treeview_dark_style,
+    COLOR_CANVAS_BG,
 )
+
+_POPUP_MIN_W = 260   # ancho mínimo del popup de CTkDropdown
 
 
 # ── Utility ───────────────────────────────────────────────────────────────────
@@ -27,6 +30,16 @@ def clear_frame(frame) -> None:
     """Destroys all child widgets inside a CTK or tk frame."""
     for widget in frame.winfo_children():
         widget.destroy()
+
+
+def _apply_dark_bg(widget, bg: str) -> None:
+    """Recursively sets background color on a tk widget and its children."""
+    try:
+        widget.configure(background=bg)
+    except Exception:
+        pass
+    for child in widget.winfo_children():
+        _apply_dark_bg(child, bg)
 
 
 # ── CTkDropdown ───────────────────────────────────────────────────────────────
@@ -56,6 +69,7 @@ class CTkDropdown:
         self._items = items
         self._popup: ctk.CTkFrame | None = None
         self._close_binding: str | None = None  # funcid returned by root.bind()
+        self._active_label: str | None = None   # último ítem seleccionado
 
         default_kwargs = dict(font=FONT_NORMAL, height=32)
         default_kwargs.update(btn_kwargs)
@@ -92,21 +106,23 @@ class CTkDropdown:
         bx = self._btn.winfo_rootx() - rx
         by = self._btn.winfo_rooty() - ry + self._btn.winfo_height()
 
-        popup = ctk.CTkFrame(root, corner_radius=8, border_width=1)
+        popup_w = max(_POPUP_MIN_W, self._btn.winfo_width())
+        popup = ctk.CTkFrame(root, corner_radius=8, border_width=1, width=popup_w)
         popup.lift()
         popup.place(x=bx, y=by)
 
         for label, cmd in self._items:
+            prefix = "✓  " if label == self._active_label else "    "
             ctk.CTkButton(
                 popup,
-                text=label,
+                text=f"{prefix}{label}",
                 anchor="w",
                 height=30,
                 font=FONT_SMALL,
                 fg_color="transparent",
                 hover_color=("gray80", "gray30"),
                 text_color=("gray10", "gray90"),
-                command=self._make_cb(cmd),
+                command=self._make_cb(cmd, label),
             ).pack(fill="x", padx=3, pady=2)
 
         self._popup = popup
@@ -131,8 +147,9 @@ class CTkDropdown:
         if not (px <= event.x_root <= px + pw and py <= event.y_root <= py + ph):
             self._close()
 
-    def _make_cb(self, cmd):
+    def _make_cb(self, cmd, label: str = ""):
         def cb():
+            self._active_label = label
             self._close()
             cmd()
         return cb
@@ -175,17 +192,34 @@ class GraphCanvas:
     """
 
     def __init__(self, parent):
-        self._frame = ctk.CTkFrame(parent, fg_color="white", corner_radius=6)
+        self._frame = ctk.CTkFrame(parent, fg_color=("gray95", "gray17"), corner_radius=6)
         self._frame.grid(row=0, column=0, sticky="nsew", padx=PAD_M, pady=PAD_M)
         self._canvas = None
 
     def render(self, fig: Figure) -> None:
         """Replaces any existing graph with a new Figure."""
+        is_dark = ctk.get_appearance_mode() == "Dark"
+        bg = "#2b2b2b" if is_dark else "#f2f2f2"
+        text_color = "white" if is_dark else "black"
+        spine_color = "#555555" if is_dark else "#cccccc"
+
+        fig.patch.set_facecolor(bg)
+        for ax in fig.axes:
+            ax.set_facecolor(bg)
+            ax.tick_params(colors=text_color)
+            ax.xaxis.label.set_color(text_color)
+            ax.yaxis.label.set_color(text_color)
+            ax.title.set_color(text_color)
+            for spine in ax.spines.values():
+                spine.set_edgecolor(spine_color)
+
         clear_frame(self._frame)
         canvas = FigureCanvasTkAgg(fig, master=self._frame)
         canvas.draw()
         toolbar = NavigationToolbar2Tk(canvas, self._frame)
         toolbar.update()
+        if is_dark:
+            _apply_dark_bg(toolbar, bg)
         canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=True)
         self._canvas = canvas
 
@@ -215,7 +249,7 @@ class ScrollableCanvas(ctk.CTkFrame):
     """
 
     def __init__(self, parent, virtual_w: int = 2000, virtual_h: int = 1400,
-                 bg: str = "#1e1e2e", **kwargs):
+                 bg: str = COLOR_CANVAS_BG, **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
         self._virtual_w = virtual_w
         self._virtual_h = virtual_h
@@ -348,9 +382,15 @@ class DataTreeview:
         self._tree.delete(*self._tree.get_children())
         self._tree["columns"] = list(dataframe.columns)
         self._tree["show"] = "headings"
+
+        char_px = 8  # approximate pixels per character at size 10
         for col in dataframe.columns:
+            col_vals = dataframe[col].astype(str)
+            max_chars = max(len(str(col)), col_vals.str.len().max() if len(col_vals) else 0)
+            col_w = max(60, min(int(max_chars * char_px) + 16, 240))
             self._tree.heading(col, text=col)
-            self._tree.column(col, anchor="center", width=90, minwidth=60)
+            self._tree.column(col, anchor="center", width=col_w, minwidth=60)
+
         for _, row in dataframe.iterrows():
             self._tree.insert("", "end", values=list(row))
 

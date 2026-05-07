@@ -23,10 +23,10 @@ def scaled(size: int) -> int:
 
 
 # ── Font presets ───────────────────────────────────────────────────────────────
-FONT_TITLE   = ("Arial", scaled(18), "bold")
-FONT_SECTION = ("Arial", scaled(12), "bold")
-FONT_NORMAL  = ("Arial", scaled(11))
-FONT_SMALL   = ("Arial", scaled(10))
+FONT_TITLE   = ("Helvetica", scaled(18), "bold")
+FONT_SECTION = ("Helvetica", scaled(12), "bold")
+FONT_NORMAL  = ("Helvetica", scaled(11))
+FONT_SMALL   = ("Helvetica", scaled(10))
 FONT_MONO    = ("Courier New", scaled(10))
 FONT_MONO_SM = ("Courier New", scaled(9))
 
@@ -35,6 +35,28 @@ PAD_XS = scaled(3)
 PAD_S  = scaled(5)
 PAD_M  = scaled(10)
 PAD_L  = scaled(16)
+
+# ── Layout constants ───────────────────────────────────────────────────────────
+BTN_H        = 30                       # altura canónica de botones de acción
+TOOLBAR_H    = 44                       # altura de toolbar de paneles principales
+SUBTOOLBAR_H = 32                       # altura de sub-toolbars (DataTable, etc.)
+TOOLBAR_BG   = ("gray88", "gray18")     # fondo de toolbar de paneles
+
+# ── Semantic color tokens (light mode, dark mode) ──────────────────────────────
+CLR_BTN_PRIMARY       = ("#3a7ebf", "#1f6aa5")
+CLR_BTN_SECONDARY     = ("gray70",  "gray35")
+CLR_BTN_DANGER        = ("#b03a3a", "#8a2020")
+
+CLR_HOVER_PRIMARY     = ("#2d6296", "#17528a")
+CLR_HOVER_SECONDARY   = ("gray60",  "gray45")
+CLR_HOVER_DANGER      = ("#8a2020", "#6b1515")
+
+# ── Surface / structural color tokens ─────────────────────────────────────────
+SIDEBAR_BG        = ("gray88", "gray16")   # sidebar wrapper background
+SIDEBAR_TOGGLE_BG = ("gray82", "gray20")   # sidebar toggle-strip background
+CLR_INPUT_BG      = ("gray80", "gray25")   # multi-select input surface
+CLR_DIVIDER       = ("gray70", "gray35")   # separator / divider line
+CLR_PLACEHOLDER   = ("gray45", "gray60")   # placeholder / hint text
 
 # ── Semantic color aliases (used in plain tk/ttk widgets only) ─────────────────
 # CTK widgets pick up their own colors from the active theme.
@@ -68,14 +90,14 @@ def apply_treeview_dark_style() -> None:
         lightcolor=COLOR_TREEVIEW_BG,
         darkcolor=COLOR_TREEVIEW_BG,
         rowheight=row_h,
-        font=("Arial", scaled(10)),
+        font=("Helvetica", scaled(10)),
     )
     style.configure(
         "Dark.Treeview.Heading",
         background=COLOR_TREEVIEW_HEADING,
         foreground="white",
         relief="flat",
-        font=("Arial", scaled(10), "bold"),
+        font=("Helvetica", scaled(10), "bold"),
     )
     style.map(
         "Dark.Treeview",

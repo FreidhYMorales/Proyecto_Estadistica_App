@@ -12,7 +12,12 @@ un gráfico de barras N_h vs n_h.
 from tkinter import messagebox
 import customtkinter as ctk
 
-from views.theme import FONT_SECTION, FONT_SMALL, PAD_XS, PAD_S, PAD_M, PAD_L
+from views.theme import (
+    FONT_SECTION, FONT_SMALL,
+    PAD_XS, PAD_S, PAD_M, PAD_L,
+    TOOLBAR_H, TOOLBAR_BG,
+    CLR_BTN_SECONDARY, CLR_HOVER_SECONDARY, CLR_DIVIDER,
+)
 from views.components import clear_frame, CTkDropdown, ResultTextWidget, GraphCanvas
 
 
@@ -30,7 +35,7 @@ class SamplingPanel:
         self._root.columnconfigure(0, weight=1)
 
         self._toolbar = ctk.CTkFrame(
-            self._root, height=44, fg_color=("gray88", "gray18"), corner_radius=0
+            self._root, height=TOOLBAR_H, fg_color=TOOLBAR_BG, corner_radius=0
         )
         self._toolbar.grid(row=0, column=0, sticky="ew")
 
@@ -74,8 +79,8 @@ class SamplingPanel:
         ).pack(side="left", padx=PAD_S, pady=PAD_S)
 
         # Separador visual
-        ctk.CTkFrame(self._toolbar, width=1, fg_color=("gray70", "gray40")).pack(
-            side="left", fill="y", padx=PAD_S, pady=PAD_XS)
+        ctk.CTkFrame(self._toolbar, width=1, height=28, fg_color=CLR_DIVIDER).pack(
+            side="left", padx=PAD_S, pady=PAD_XS)
 
         # ── No Probabilístico ─────────────────────────────────────────────────
         CTkDropdown(
@@ -90,8 +95,8 @@ class SamplingPanel:
         ).pack(side="left", padx=PAD_S, pady=PAD_S)
 
         # Separador visual
-        ctk.CTkFrame(self._toolbar, width=1, fg_color=("gray70", "gray40")).pack(
-            side="left", fill="y", padx=PAD_S, pady=PAD_XS)
+        ctk.CTkFrame(self._toolbar, width=1, height=28, fg_color=CLR_DIVIDER).pack(
+            side="left", padx=PAD_S, pady=PAD_XS)
 
         # ── Errores ───────────────────────────────────────────────────────────
         CTkDropdown(
@@ -108,15 +113,15 @@ class SamplingPanel:
     def _make_text_panel(self, titulo: str):
         """Retorna (control_frame, ResultTextWidget)."""
         clear_frame(self._content)
-        self._content.rowconfigure(0, weight=0)
-        self._content.rowconfigure(1, weight=0)
+        for r in range(4):
+            self._content.rowconfigure(r, weight=0)
         self._content.rowconfigure(2, weight=1)
 
         ctk.CTkLabel(self._content, text=titulo, font=FONT_SECTION, anchor="w").grid(
             row=0, column=0, sticky="w", padx=PAD_L, pady=(PAD_M, 0)
         )
 
-        control = ctk.CTkFrame(self._content, fg_color="transparent", height=44)
+        control = ctk.CTkFrame(self._content, fg_color="transparent")
         control.grid(row=1, column=0, sticky="ew", padx=PAD_M, pady=PAD_S)
 
         result_frame = ctk.CTkFrame(self._content, fg_color="transparent")
@@ -130,16 +135,16 @@ class SamplingPanel:
     def _make_graph_panel(self, titulo: str):
         """Retorna (control_frame, result_widget, graph_canvas)."""
         clear_frame(self._content)
-        self._content.rowconfigure(0, weight=0)
-        self._content.rowconfigure(1, weight=0)
-        self._content.rowconfigure(2, weight=1)
-        self._content.rowconfigure(3, weight=2)
+        for r in range(4):
+            self._content.rowconfigure(r, weight=0)
+        self._content.rowconfigure(2, weight=2)
+        self._content.rowconfigure(3, weight=3)
 
         ctk.CTkLabel(self._content, text=titulo, font=FONT_SECTION, anchor="w").grid(
             row=0, column=0, sticky="w", padx=PAD_L, pady=(PAD_M, 0)
         )
 
-        control = ctk.CTkFrame(self._content, fg_color="transparent", height=52)
+        control = ctk.CTkFrame(self._content, fg_color="transparent")
         control.grid(row=1, column=0, sticky="ew", padx=PAD_M, pady=PAD_S)
 
         result_frame = ctk.CTkFrame(self._content, fg_color="transparent")
@@ -205,7 +210,7 @@ class SamplingPanel:
         ctk.CTkButton(control, text="Ejecutar", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestreo_simple.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -234,7 +239,7 @@ class SamplingPanel:
         ctk.CTkButton(control, text="Ejecutar", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestreo_sistematico.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -294,7 +299,7 @@ class SamplingPanel:
         ctk.CTkButton(r1, text="Ejecutar", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(r1, text="Exportar tabla", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestreo_estratificado.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -324,7 +329,7 @@ class SamplingPanel:
         ctk.CTkButton(control, text="Ejecutar", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(control, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestreo_conveniencia.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -372,7 +377,7 @@ class SamplingPanel:
         ctk.CTkButton(r1, text="Ejecutar", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(r1, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestreo_juicio.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -428,7 +433,7 @@ class SamplingPanel:
         ctk.CTkButton(r1, text="Ejecutar", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(r1, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestreo_cuotas.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -480,7 +485,7 @@ class SamplingPanel:
         ctk.CTkButton(r1, text="Ejecutar", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(r1, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestreo_bola_nieve.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -520,7 +525,7 @@ class SamplingPanel:
         ctk.CTkButton(r0, text="Ejecutar", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(r0, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("muestreo_conglomerados.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -573,7 +578,7 @@ class SamplingPanel:
         ctk.CTkButton(r1, text="Calcular", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(r1, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("errores_media.txt")).pack(
             side="left", padx=PAD_S)
 
@@ -636,7 +641,7 @@ class SamplingPanel:
         ctk.CTkButton(r1, text="Calcular", font=FONT_SMALL, height=28,
                       command=ejecutar).pack(side="left", padx=PAD_M)
         ctk.CTkButton(r1, text="Exportar", font=FONT_SMALL, height=28,
-                      fg_color=("gray70", "gray35"), hover_color=("gray60", "gray45"),
+                      fg_color=CLR_BTN_SECONDARY, hover_color=CLR_HOVER_SECONDARY,
                       command=lambda: result.export("errores_proporcion.txt")).pack(
             side="left", padx=PAD_S)
 
